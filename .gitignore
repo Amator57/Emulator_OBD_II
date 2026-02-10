@@ -1,0 +1,22 @@
+# PlatformIO
+.pio/
+.build/
+.platformio/
+
+# Visual Studio Code
+.vscode/
+*.code-workspace
+
+# Logs
+*.log
+
+# Mac / Windows temporary files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Ignore Python virtual environments (optional)
+.venv/
+
+
