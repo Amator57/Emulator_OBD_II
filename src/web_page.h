@@ -35,6 +35,7 @@ const char index_html[] PROGMEM = R"rawliteral(
         input:checked + .slider { background-color: #2196F3; }
         input:focus + .slider { box-shadow: 0 0 1px #2196F3; }
         input:checked + .slider:before { transform: translateX(26px); }
+        canvas { background-color: #fff; border: 1px solid #ccc; border-radius: 4px; width: 100%; height: 200px; margin-top: 10px; }
     </style>
 </head>
 <body>
@@ -83,6 +84,9 @@ const char index_html[] PROGMEM = R"rawliteral(
             <label for="dist_mil">Distance with MIL (km):</label>
             <input type="number" id="dist_mil" name="dist_mil" value="0" min="0">
 
+            <label for="voltage">Battery Voltage (V):</label>
+            <input type="number" id="voltage" name="voltage" step="0.1" value="14.2">
+
             <label for="dtc_list">DTCs (comma-separated, e.g., P0123,C0456):</label>
             <input type="text" id="dtc_list" name="dtc_list" placeholder="P0101,C0300,B1000">
 
@@ -91,6 +95,16 @@ const char index_html[] PROGMEM = R"rawliteral(
         <button id="clearDtcBtn" class="button-red">Clear All DTCs</button>
         <button id="cycleBtn" class="button-blue">Simulate Driving Cycle</button>
         <div id="status" style="margin-top: 15px; font-weight: bold; text-align: center; min-height: 1.2em;"></div>
+
+        <div style="margin-top: 20px;">
+            <h2>Live Chart</h2>
+            <div style="margin-bottom: 10px; font-size: 14px;">
+                <label style="display:inline; margin-right:10px;">Max RPM: <input type="number" id="chart_max_rpm" value="6000" style="width:60px; padding:5px;"></label>
+                <label style="display:inline; margin-right:10px;">Max Speed: <input type="number" id="chart_max_speed" value="200" style="width:50px; padding:5px;"></label>
+                <label style="display:inline;">Max Temp: <input type="number" id="chart_max_temp" value="150" style="width:50px; padding:5px;"></label>
+            </div>
+            <canvas id="rpmChart"></canvas>
+        </div>
 
         <div class="live-status">
             <h2>Live Status</h2>
@@ -102,6 +116,7 @@ const char index_html[] PROGMEM = R"rawliteral(
             <p><strong>Fuel Level:</strong> <span id="status_fuel">N/A</span> %</p>
             <p><strong>Distance w/ MIL:</strong> <span id="status_dist_mil">N/A</span> km</p>
             <p><strong>Error-Free Cycles:</strong> <span id="status_cycles">N/A</span></p>
+            <p><strong>Voltage:</strong> <span id="status_voltage">N/A</span> V</p>
             <p><strong>DTCs:</strong> <span id="status_dtcs">N/A</span></p>
             <p><strong>Permanent DTCs:</strong> <span id="status_permanent_dtcs">N/A</span></p>
         </div>
@@ -207,6 +222,92 @@ const char index_html[] PROGMEM = R"rawliteral(
         let gateway = `ws://${window.location.hostname}/ws`;
         let websocket;
 
+        // --- Chart Logic ---
+        const canvas = document.getElementById('rpmChart');
+        const ctx = canvas.getContext('2d');
+        let speedHistory = new Array(60).fill(0); // Історія на 60 точок
+        let rpmHistory = new Array(60).fill(0); // Історія на 60 точок
+        let tempHistory = new Array(60).fill(0); // Історія на 60 точок
+
+        // Load chart settings
+        if(localStorage.getItem('chart_max_rpm')) document.getElementById('chart_max_rpm').value = localStorage.getItem('chart_max_rpm');
+        if(localStorage.getItem('chart_max_speed')) document.getElementById('chart_max_speed').value = localStorage.getItem('chart_max_speed');
+        if(localStorage.getItem('chart_max_temp')) document.getElementById('chart_max_temp').value = localStorage.getItem('chart_max_temp');
+
+        function updateChartSettings() {
+            localStorage.setItem('chart_max_rpm', document.getElementById('chart_max_rpm').value);
+            localStorage.setItem('chart_max_speed', document.getElementById('chart_max_speed').value);
+            localStorage.setItem('chart_max_temp', document.getElementById('chart_max_temp').value);
+            drawChart();
+        }
+        ['chart_max_rpm', 'chart_max_speed', 'chart_max_temp'].forEach(id => document.getElementById(id).addEventListener('change', updateChartSettings));
+
+        function resizeCanvas() {
+            canvas.width = canvas.clientWidth;
+            canvas.height = canvas.clientHeight;
+            drawChart();
+        }
+        window.addEventListener('resize', resizeCanvas);
+
+        function drawChart() {
+            const w = canvas.width;
+            const h = canvas.height;
+            ctx.clearRect(0, 0, w, h);
+            ctx.font = '12px Arial';
+
+            const maxRPM = parseFloat(document.getElementById('chart_max_rpm').value) || 6000;
+            const maxSpeed = parseFloat(document.getElementById('chart_max_speed').value) || 200;
+            const maxTemp = parseFloat(document.getElementById('chart_max_temp').value) || 150;
+            const step = w / (rpmHistory.length - 1);
+
+            // --- Draw RPM line ---
+            ctx.beginPath();
+            ctx.strokeStyle = '#2196F3'; // Blue
+            ctx.lineWidth = 2;
+
+            for (let i = 0; i < rpmHistory.length; i++) {
+                let val = rpmHistory[i];
+                let y = h - (val / maxRPM * h);
+                if (i === 0) ctx.moveTo(0, y);
+                else ctx.lineTo(i * step, y);
+            }
+            ctx.stroke();
+
+            // --- Draw Speed line ---
+            ctx.beginPath();
+            ctx.strokeStyle = '#4CAF50'; // Green
+            ctx.lineWidth = 2;
+
+            for (let i = 0; i < speedHistory.length; i++) {
+                let val = speedHistory[i];
+                let y = h - (val / maxSpeed * h);
+                if (i === 0) ctx.moveTo(0, y);
+                else ctx.lineTo(i * step, y);
+            }
+            ctx.stroke();
+
+            // --- Draw Temp line ---
+            ctx.beginPath();
+            ctx.strokeStyle = '#f44336'; // Red
+            ctx.lineWidth = 2;
+
+            for (let i = 0; i < tempHistory.length; i++) {
+                let val = tempHistory[i];
+                let y = h - (val / maxTemp * h);
+                if (i === 0) ctx.moveTo(0, y);
+                else ctx.lineTo(i * step, y);
+            }
+            ctx.stroke();
+
+            // --- Draw Legend ---
+            ctx.fillStyle = '#2196F3';
+            ctx.fillText('RPM', 10, 15);
+            ctx.fillStyle = '#4CAF50';
+            ctx.fillText('Speed (km/h)', 50, 15);
+            ctx.fillStyle = '#f44336';
+            ctx.fillText('Temp (C)', 140, 15);
+        }
+
         function initWebSocket() {
             console.log('Trying to open a WebSocket connection...');
             websocket = new WebSocket(gateway);
@@ -236,6 +337,7 @@ const char index_html[] PROGMEM = R"rawliteral(
             document.getElementById('status_fuel').textContent = data.fuel;
             document.getElementById('status_dist_mil').textContent = data.dist_mil;
             document.getElementById('status_cycles').textContent = data.cycles;
+            document.getElementById('status_voltage').textContent = data.voltage;
             document.getElementById('status_dtcs').textContent = data.dtcs.length > 0 ? data.dtcs.join(', ') : 'None';
             document.getElementById('status_permanent_dtcs').textContent = (data.permanent_dtcs && data.permanent_dtcs.length > 0) ? data.permanent_dtcs.join(', ') : 'None';
 
@@ -255,10 +357,26 @@ const char index_html[] PROGMEM = R"rawliteral(
             document.getElementById('maf').value = data.maf;
             document.getElementById('fuel').value = data.fuel;
             document.getElementById('dist_mil').value = data.dist_mil;
+            document.getElementById('voltage').value = data.voltage;
             document.getElementById('dtc_list').value = data.dtcs.join(',');
+
+            // Оновлення графіку
+            speedHistory.push(data.speed);
+            if (speedHistory.length > 60) speedHistory.shift();
+
+            rpmHistory.push(data.rpm);
+            if (rpmHistory.length > 60) rpmHistory.shift();
+
+            tempHistory.push(data.temp);
+            if (tempHistory.length > 60) tempHistory.shift();
+
+            drawChart();
         }
 
-        window.addEventListener('load', initWebSocket);
+        window.addEventListener('load', function() {
+            resizeCanvas();
+            initWebSocket();
+        });
     </script>
 </body>
 </html>

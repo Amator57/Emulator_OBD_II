@@ -38,6 +38,7 @@ bool dynamic_rpm_enabled = false;
 bool misfire_simulation_enabled = false;
 float fuel_level = 75.0; // %
 int distance_with_mil = 0; // km
+float battery_voltage = 14.2; // V
 int error_free_cycles = 0;
 const int CYCLES_THRESHOLD = 3; // Кількість циклів для очищення Permanent DTC
 
@@ -182,6 +183,7 @@ void setup() {
     
     if(request->hasParam("fuel")) fuel_level = request->getParam("fuel")->value().toFloat();
     if(request->hasParam("dist_mil")) distance_with_mil = request->getParam("dist_mil")->value().toInt();
+    if(request->hasParam("voltage")) battery_voltage = request->getParam("voltage")->value().toFloat();
     
     if(request->hasParam("dynamic_rpm")) {
         String val = request->getParam("dynamic_rpm")->value();
@@ -206,6 +208,7 @@ void setup() {
     Serial.println("Misfire Sim: " + String(misfire_simulation_enabled ? "ON" : "OFF"));
     Serial.println("Fuel Level: " + String(fuel_level) + " %");
     Serial.println("Distance with MIL: " + String(distance_with_mil) + " km");
+    Serial.println("Battery Voltage: " + String(battery_voltage) + " V");
     Serial.println("==========================================");
     
     updateDisplay(); // Оновлюємо екран
@@ -315,6 +318,10 @@ void updateDisplay() {
   tft.print(distance_with_mil);
   tft.println(" km");
 
+  tft.print("Voltage: ");
+  tft.print(battery_voltage, 1);
+  tft.println(" V");
+
   tft.print("Clean Cycles: ");
   tft.print(error_free_cycles);
   tft.println("/" + String(CYCLES_THRESHOLD));
@@ -362,6 +369,7 @@ String getJsonState() {
     json += "\"maf\":" + String(maf_rate, 2) + ",";
     json += "\"fuel\":" + String(fuel_level, 1) + ",";
     json += "\"dist_mil\":" + String(distance_with_mil) + ",";
+    json += "\"voltage\":" + String(battery_voltage, 1) + ",";
     json += "\"cycles\":" + String(error_free_cycles) + ",";
     json += "\"dynamic_rpm\":" + String(dynamic_rpm_enabled ? "true" : "false") + ",";
     json += "\"misfire_sim\":" + String(misfire_simulation_enabled ? "true" : "false") + ",";
