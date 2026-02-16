@@ -6,7 +6,7 @@ const char index_html[] PROGMEM = R"rawliteral(
 <!DOCTYPE html>
 <html>
 <head>
-    <title>OBD-II Emulator Control</title>
+    <title>OBD-II Emulator-A Control</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f4; }
@@ -40,7 +40,7 @@ const char index_html[] PROGMEM = R"rawliteral(
 </head>
 <body>
     <div class="container">
-        <h1>OBD-II Emulator Control</h1>
+        <h1>OBD-II Emulator-A Control</h1>
         
         <div style="margin-bottom: 15px; padding: 10px; background-color: #e3f2fd; border-radius: 8px; border: 1px solid #90caf9;">
             <label style="display: flex; align-items: center;">

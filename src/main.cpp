@@ -12,13 +12,18 @@
 
 // ############## Налаштування пінів TFT ST7735 ##############
 // Якщо у вас інші піни, змініть їх тут
-#define TFT_CS     5
-#define TFT_DC     2
-#define TFT_RST    4
+//#define TFT_CS     5
+//#define TFT_DC     2
+//#define TFT_RST    4
 // Для апаратної реалізації SPI, піни MOSI та SCLK зазвичай визначені платою
 // Для ESP32 це GPIO 23 (MOSI) та GPIO 18 (SCLK)
 // #define TFT_SCLK 18
 // #define TFT_MOSI 23
+#define TFT_MOSI  11
+#define TFT_SCLK  12
+#define TFT_CS     10
+#define TFT_DC      9
+#define TFT_RST     8
 
 Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_RST);
 
@@ -43,8 +48,8 @@ int error_free_cycles = 0;
 const int CYCLES_THRESHOLD = 3; // Кількість циклів для очищення Permanent DTC
 
 // ############## Налаштування Wi-Fi та веб-сервера ##############
-const char* ap_ssid = "OBD-II-Emulator";
-const char* ap_password = "12345678";
+const char* ap_ssid = "OBD-II-Emulator-A";
+const char* ap_password = "123456789";
 AsyncWebServer server(80);
 AsyncWebSocket ws("/ws");
 
@@ -64,7 +69,10 @@ void completeDrivingCycle();
 
 void setup() {
   Serial.begin(115200);
-  Serial.println("OBD-II Emulator Starting...");
+  Serial.println("OBD-II Emulator-A Starting...");
+
+  // Явна ініціалізація SPI, щоб гарантувати використання вибраних пінів (SCLK, MISO, MOSI, SS)
+  SPI.begin(TFT_SCLK, -1, TFT_MOSI, TFT_CS);
 
   // --- Ініціалізація TFT ---
   tft.initR(INITR_BLACKTAB); // або INITR_GREENTAB, INITR_REDTAB
@@ -73,7 +81,7 @@ void setup() {
   tft.setCursor(0, 0);
   tft.setTextColor(ST7735_WHITE);
   tft.setTextSize(1);
-  tft.println("OBD-II Emulator");
+  tft.println("OBD-II Emulator-A");
   tft.println("Starting...");
 
   // --- Налаштування Wi-Fi (точка доступу) ---
