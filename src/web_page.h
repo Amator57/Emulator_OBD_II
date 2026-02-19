@@ -45,6 +45,7 @@ const char index_html[] PROGMEM = R"rawliteral(
         input:focus + .slider { box-shadow: 0 0 1px #2196F3; }
         input:checked + .slider:before { transform: translateX(26px); }
         canvas { background-color: #fff; border: 1px solid #ccc; border-radius: 4px; width: 100%; height: 200px; margin-top: 10px; }
+        #can_log_area { width: 100%; height: 300px; font-family: monospace; font-size: 12px; border: 1px solid #ccc; overflow-y: scroll; background: #f9f9f9; padding: 5px; box-sizing: border-box; }
     </style>
 </head>
 <body>
@@ -57,7 +58,11 @@ const char index_html[] PROGMEM = R"rawliteral(
             <button class="tab-button" onclick="showPage('page-pids20', this)">PIDs 20-3F</button>
             <button class="tab-button" onclick="showPage('page-pids40', this)">PIDs 40-5F</button>
             <button class="tab-button" onclick="showPage('page-pids60', this)">PIDs 60-7F</button>
+            <button class="tab-button" onclick="showPage('page-mode06', this)">Mode 06</button>
+            <button class="tab-button" onclick="showPage('page-tcm', this)">TCM</button>
             <button class="tab-button" onclick="showPage('page-live', this)">Live Data</button>
+            <button class="tab-button" onclick="showPage('page-faults', this)">Fault Injection</button>
+            <button class="tab-button" onclick="showPage('page-can', this)">CAN Monitor</button>
         </nav>
 
         <form id="updateForm" action="/update" method="get">
@@ -90,6 +95,24 @@ const char index_html[] PROGMEM = R"rawliteral(
                         <span>Enable Lean Mixture Sim (P0171 at Low Fuel Pressure)</span>
                     </label>
                 </div>
+                
+                <h3>ECU Control</h3>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px;">
+                    <label style="display: flex; align-items: center;">
+                        <label class="switch">
+                            <input type="checkbox" id="ecu0_en" name="ecu0_en" checked>
+                            <span class="slider"></span>
+                        </label>
+                        <span>Enable ECM (Engine)</span>
+                    </label>
+                    <label style="display: flex; align-items: center;">
+                        <label class="switch">
+                            <input type="checkbox" id="ecu1_en" name="ecu1_en" checked>
+                            <span class="slider"></span>
+                        </label>
+                        <span>Enable TCM (Trans)</span>
+                    </label>
+                </div>
 
                 <label for="vin">VIN (PID 09 02):</label>
                 <input type="text" id="vin" name="vin" value="VIN_NOT_SET" maxlength="17">
@@ -106,10 +129,24 @@ const char index_html[] PROGMEM = R"rawliteral(
                 <label for="voltage">Battery Voltage (V):</label>
                 <input type="number" id="voltage" name="voltage" step="0.1" value="14.2">
 
+                <label for="dist_mil">Distance with MIL (km) (PID 0x31):</label>
+                <span class="formula">Formula: A*256 + B</span>
+                <input type="number" id="dist_mil" name="dist_mil" value="0" min="0">
+
                 <input type="submit" id="submitBtn" value="Update Emulator Data">
                 <button type="button" id="clearDtcBtn" class="button-red">Clear All DTCs</button>
                 <button type="button" id="cycleBtn" class="button-blue">Simulate Driving Cycle</button>
                 <div id="status" style="margin-top: 15px; font-weight: bold; text-align: center; min-height: 1.2em;"></div>
+
+                <div style="margin-top: 20px; padding-top: 20px; border-top: 2px solid #eee;">
+                    <h2>Configuration Management</h2>
+                    <button type="button" id="saveConfigBtn" class="button-blue" style="margin-right: 10px;">Save Configuration</button>
+                    <button type="button" id="saveNvsBtn" class="button-blue" style="margin-right: 10px;">Save to Device</button>
+                    <div style="margin-top: 15px; display: inline-block;">
+                        <input type="file" id="loadConfigFile" accept=".json" style="width: auto;">
+                        <button type="button" id="loadConfigBtn">Load Configuration</button>
+                    </div>
+                </div>
             </div>
 
             <div id="page-pids01" class="page-content">
@@ -144,10 +181,6 @@ const char index_html[] PROGMEM = R"rawliteral(
                 <label for="fuel">Fuel Level (%) (PID 0x2F):</label>
                 <span class="formula">Formula: A * 100/255</span>
                 <input type="number" id="fuel" name="fuel" step="0.1" value="75.0" min="0" max="100">
-
-                <label for="dist_mil">Distance with MIL (km) (PID 0x31):</label>
-                <span class="formula">Formula: A*256 + B</span>
-                <input type="number" id="dist_mil" name="dist_mil" value="0" min="0">
             </div>
 
             <div id="page-pids40" class="page-content">
@@ -160,6 +193,102 @@ const char index_html[] PROGMEM = R"rawliteral(
             <div id="page-pids60" class="page-content">
                 <h2>Mode 01 PIDs [60-7F]</h2>
                 <p>Наразі в цьому діапазоні немає параметрів, що налаштовуються.</p>
+            </div>
+
+            <div id="page-mode06" class="page-content">
+                <h2>Mode 06 Test Results (for Engine ECU)</h2>
+                <p>Configure on-board monitoring test results. Enter TID in hex (e.g., 21).</p>
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 10px; align-items: center;">
+                    <b>Test ID (Hex)</b><b>Value</b><b>Min Limit</b><b>Max Limit</b>
+                    <input type="text" name="m06_t1_id" placeholder="e.g., 21">
+                    <input type="number" name="m06_t1_val" value="0">
+                    <input type="number" name="m06_t1_min" value="0">
+                    <input type="number" name="m06_t1_max" value="65535">
+                    <input type="text" name="m06_t2_id" placeholder="e.g., 22">
+                    <input type="number" name="m06_t2_val" value="0">
+                    <input type="number" name="m06_t2_min" value="0">
+                    <input type="number" name="m06_t2_max" value="65535">
+                </div>
+            </div>
+
+            <div id="page-tcm" class="page-content">
+                <h2>Transmission Control Module (TCM)</h2>
+                <label for="tcm_gear">Current Gear (PID 0xA4 - Custom):</label>
+                <span class="formula">Value: 0=Neutral, 1-6=Gears, 255=Reverse</span>
+                <input type="number" id="tcm_gear" name="tcm_gear" value="1" min="0" max="255">
+            </div>
+
+            <div id="page-faults" class="page-content">
+                <h2>Fault Injection & Stress Testing</h2>
+                
+                <div style="margin-bottom: 15px; padding: 10px; background-color: #ffebee; border-radius: 8px; border: 1px solid #ef9a9a;">
+                    <label>Response Delay (ms): <span id="val_delay">0</span></label>
+                    <input type="range" id="frame_delay" name="frame_delay" min="0" max="1000" value="0" oninput="document.getElementById('val_delay').innerText = this.value">
+                    
+                    <label>Random CAN Error Rate (%): <span id="val_error">0</span></label>
+                    <input type="range" id="error_rate" name="error_rate" min="0" max="100" value="0" oninput="document.getElementById('val_error').innerText = this.value">
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <label style="display: flex; align-items: center;">
+                        <label class="switch">
+                            <input type="checkbox" id="fault_silent" name="fault_silent" value="true">
+                            <span class="slider"></span>
+                        </label>
+                        <span>Silent ECU (No Response)</span>
+                    </label>
+                    <label style="display: flex; align-items: center;">
+                        <label class="switch">
+                            <input type="checkbox" id="fault_multi" name="fault_multi" value="true">
+                            <span class="slider"></span>
+                        </label>
+                        <span>Multiple ECU Respond (Ghost)</span>
+                    </label>
+                    <label style="display: flex; align-items: center;">
+                        <label class="switch">
+                            <input type="checkbox" id="fault_seq" name="fault_seq" value="true">
+                            <span class="slider"></span>
+                        </label>
+                        <span>Incorrect Sequence Number (ISO-TP)</span>
+                    </label>
+                    <label style="display: flex; align-items: center;">
+                        <label class="switch">
+                            <input type="checkbox" id="fault_stmin" name="fault_stmin" value="true">
+                            <span class="slider"></span>
+                        </label>
+                        <span>STmin Overflow (Ignore Flow Control)</span>
+                    </label>
+                    <label style="display: flex; align-items: center;">
+                        <label class="switch">
+                            <input type="checkbox" id="fault_wrong_fc" name="fault_wrong_fc" value="true">
+                            <span class="slider"></span>
+                        </label>
+                        <span>Wrong Flow Control (Send WAIT)</span>
+                    </label>
+                    <label style="display: flex; align-items: center;">
+                        <label class="switch">
+                            <input type="checkbox" id="fault_partial_vin" name="fault_partial_vin" value="true">
+                            <span class="slider"></span>
+                        </label>
+                        <span>Partial Multi-frame (Timeout)</span>
+                    </label>
+                </div>
+                
+                <h3>Quick Faults</h3>
+                <button type="button" class="button-red" onclick="injectRandomDTC()">Inject Random DTC</button>
+            </div>
+            
+            <div id="page-can" class="page-content">
+                <h2>CAN Bus Monitor</h2>
+                <label style="display: flex; align-items: center; margin-bottom: 10px;">
+                    <label class="switch">
+                        <input type="checkbox" id="can_log" name="can_log">
+                        <span class="slider"></span>
+                    </label>
+                    <span>Enable CAN Logging (Real-time)</span>
+                </label>
+                <div id="can_log_area"></div>
+                <button type="button" onclick="document.getElementById('can_log_area').innerHTML = ''">Clear Log</button>
             </div>
         </form>
 
@@ -183,6 +312,7 @@ const char index_html[] PROGMEM = R"rawliteral(
                 <p><strong>CAL ID:</strong> <span id="status_cal_id">N/A</span></p>
                 <p><strong>CVN:</strong> <span id="status_cvn">N/A</span></p>
                 <p><strong>RPM:</strong> <span id="status_rpm">N/A</span></p>
+                <p><strong>Gear:</strong> <span id="status_gear">N/A</span></p>
                 <p><strong>Temp:</strong> <span id="status_temp">N/A</span> &deg;C</p>
                 <p><strong>Speed:</strong> <span id="status_speed">N/A</span> km/h</p>
                 <p><strong>MAF:</strong> <span id="status_maf">N/A</span> g/s</p>
@@ -196,6 +326,17 @@ const char index_html[] PROGMEM = R"rawliteral(
                 <p><strong>Permanent DTCs:</strong> <span id="status_permanent_dtcs">N/A</span></p>
             </div>
         </div>
+
+        <div id="freeze-frame-status" class="live-status" style="display: none; background-color: #fef9e7; border-color: #f1c40f; margin-top: 20px;">
+            <h2>Freeze Frame Data</h2>
+            <p><strong>Trigger DTC:</strong> <span id="status_ff_dtc">N/A</span></p>
+            <p><strong>RPM:</strong> <span id="status_ff_rpm">N/A</span></p>
+            <p><strong>Speed:</strong> <span id="status_ff_speed">N/A</span> km/h</p>
+            <p><strong>Temp:</strong> <span id="status_ff_temp">N/A</span> &deg;C</p>
+            <p><strong>MAF:</strong> <span id="status_ff_maf">N/A</span> g/s</p>
+            <p><strong>Fuel Pressure:</strong> <span id="status_ff_fuel_pressure">N/A</span> kPa</p>
+        </div>
+
     </div>
 
     <script>
@@ -212,6 +353,13 @@ const char index_html[] PROGMEM = R"rawliteral(
             if (pageId === 'page-live') {
                 resizeCanvas(); // Redraw chart when its tab is shown
             }
+        }
+
+        function injectRandomDTC() {
+            const codes = ['P0101', 'P0300', 'P0171', 'C0035', 'U0100'];
+            const randomCode = codes[Math.floor(Math.random() * codes.length)];
+            document.getElementById('dtc_list').value = randomCode;
+            document.getElementById('submitBtn').click();
         }
 
         document.getElementById('updateForm').addEventListener('submit', function(event) {
@@ -312,6 +460,70 @@ const char index_html[] PROGMEM = R"rawliteral(
                     btn.disabled = false;
                     setTimeout(() => { statusDiv.textContent = ''; }, 3000);
                 });
+        });
+
+        document.getElementById('saveConfigBtn').addEventListener('click', function() {
+            window.location.href = '/config.json';
+        });
+
+        document.getElementById('saveNvsBtn').addEventListener('click', function() {
+            const btn = this;
+            const statusDiv = document.getElementById('status');
+            
+            btn.disabled = true;
+            statusDiv.textContent = 'Saving to device memory...';
+            statusDiv.style.color = 'blue';
+
+            fetch('/save_nvs')
+                .then(response => response.text())
+                .then(data => {
+                    statusDiv.textContent = data;
+                    statusDiv.style.color = 'green';
+                })
+                .catch(error => {
+                    statusDiv.textContent = 'Error: Could not save to device.';
+                    statusDiv.style.color = 'red';
+                })
+                .finally(() => {
+                    btn.disabled = false;
+                    setTimeout(() => { statusDiv.textContent = ''; }, 5000);
+                });
+        });
+
+        document.getElementById('loadConfigBtn').addEventListener('click', function() {
+            const fileInput = document.getElementById('loadConfigFile');
+            const statusDiv = document.getElementById('status');
+
+            if (fileInput.files.length === 0) {
+                statusDiv.textContent = 'Please select a configuration file first.';
+                statusDiv.style.color = 'red';
+                return;
+            }
+            const file = fileInput.files[0];
+            const reader = new FileReader();
+            
+            reader.onload = function(e) {
+                const content = e.target.result;
+                statusDiv.textContent = 'Loading configuration...';
+                statusDiv.style.color = 'blue';
+
+                fetch('/load_config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: content
+                })
+                .then(response => response.text())
+                .then(data => {
+                    statusDiv.textContent = data;
+                    statusDiv.style.color = 'green';
+                    setTimeout(() => { statusDiv.textContent = ''; }, 5000);
+                })
+                .catch(error => {
+                    statusDiv.textContent = 'Error loading configuration: ' + error;
+                    statusDiv.style.color = 'red';
+                });
+            };
+            reader.readAsText(file);
         });
 
         let gateway = `ws://${window.location.hostname}/ws`;
@@ -421,11 +633,21 @@ const char index_html[] PROGMEM = R"rawliteral(
         function onMessage(event) {
             const data = JSON.parse(event.data);
             
+            if (data.log) {
+                const logArea = document.getElementById('can_log_area');
+                const line = document.createElement('div');
+                line.textContent = new Date().toLocaleTimeString() + " " + data.log;
+                logArea.appendChild(line);
+                logArea.scrollTop = logArea.scrollHeight;
+                return; // It's a log message, stop processing status
+            }
+            
             // Оновлюємо блок "Live Status"
             document.getElementById('status_vin').textContent = data.vin;
             document.getElementById('status_cal_id').textContent = data.cal_id;
             document.getElementById('status_cvn').textContent = data.cvn;
             document.getElementById('status_rpm').textContent = data.rpm;
+            document.getElementById('status_gear').textContent = data.tcm_gear;
             document.getElementById('status_temp').textContent = data.temp;
             document.getElementById('status_speed').textContent = data.speed;
             document.getElementById('status_maf').textContent = data.maf;
@@ -438,8 +660,17 @@ const char index_html[] PROGMEM = R"rawliteral(
             document.getElementById('status_dtcs').textContent = data.dtcs.length > 0 ? data.dtcs.join(', ') : 'None';
             document.getElementById('status_permanent_dtcs').textContent = (data.permanent_dtcs && data.permanent_dtcs.length > 0) ? data.permanent_dtcs.join(', ') : 'None';
 
-            if (data.dynamic_rpm !== undefined) {
-                document.getElementById('dynamic_rpm_check').checked = data.dynamic_rpm;
+            const ff_div = document.getElementById('freeze-frame-status');
+            if (data.freeze_frame_set) {
+                ff_div.style.display = 'block';
+                document.getElementById('status_ff_dtc').textContent = data.ff_dtc;
+                document.getElementById('status_ff_rpm').textContent = data.ff_rpm;
+                document.getElementById('status_ff_speed').textContent = data.ff_speed;
+                document.getElementById('status_ff_temp').textContent = data.ff_temp;
+                document.getElementById('status_ff_maf').textContent = data.ff_maf;
+                document.getElementById('status_ff_fuel_pressure').textContent = data.ff_fuel_pressure;
+            } else {
+                ff_div.style.display = 'none';
             }
 
             if (data.misfire_sim !== undefined) {
@@ -455,6 +686,7 @@ const char index_html[] PROGMEM = R"rawliteral(
             document.getElementById('cal_id').value = data.cal_id;
             document.getElementById('cvn').value = data.cvn;
             document.getElementById('rpm').value = data.rpm;
+            document.getElementById('tcm_gear').value = data.tcm_gear;
             document.getElementById('temp').value = data.temp;
             document.getElementById('speed').value = data.speed;
             document.getElementById('maf').value = data.maf;
@@ -465,6 +697,22 @@ const char index_html[] PROGMEM = R"rawliteral(
             document.getElementById('dist_mil').value = data.dist_mil;
             document.getElementById('voltage').value = data.voltage;
             document.getElementById('dtc_list').value = data.dtcs.join(',');
+            
+            // Faults
+            document.getElementById('frame_delay').value = data.frame_delay || 0;
+            document.getElementById('val_delay').innerText = data.frame_delay || 0;
+            document.getElementById('error_rate').value = data.error_rate || 0;
+            document.getElementById('val_error').innerText = data.error_rate || 0;
+            document.getElementById('fault_seq').checked = data.fault_seq;
+            document.getElementById('fault_silent').checked = data.fault_silent;
+            document.getElementById('fault_multi').checked = data.fault_multi;
+            document.getElementById('fault_stmin').checked = data.fault_stmin;
+            document.getElementById('fault_wrong_fc').checked = data.fault_wrong_fc;
+            document.getElementById('fault_partial_vin').checked = data.fault_partial_vin;
+            
+            document.getElementById('ecu0_en').checked = data.ecu0_en;
+            document.getElementById('ecu1_en').checked = data.ecu1_en;
+            document.getElementById('can_log').checked = data.can_log;
 
             // Оновлення графіку
             speedHistory.push(data.speed);
