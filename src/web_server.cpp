@@ -2,7 +2,7 @@
 #include <WiFi.h>
 #include <ESPAsyncWebServer.h>
 #include <ArduinoJson.h>
-#include "web_page.h"
+#include "../include/web_page.h"
 
 extern AsyncWebServer server;
 extern AsyncWebSocket ws;
@@ -66,6 +66,8 @@ String getJsonState() {
     doc["ecu0_en"] = ecus[0].enabled;
     doc["ecu1_en"] = ecus[1].enabled;
     doc["can_log"] = can_logging_enabled;
+    doc["uds_session"] = ecus[0].uds_session;
+    doc["uds_security"] = ecus[0].uds_security_unlocked;
     
     JsonArray dtcs_array = doc.createNestedArray("dtcs");
     for (int i = 0; i < ecus[0].num_dtcs; i++) {
@@ -95,6 +97,38 @@ void setupWebServer() {
   server.on("/update", HTTP_GET, [] (AsyncWebServerRequest *request) {
     if(request->hasParam("rpm")) ecus[0].engine_rpm = request->getParam("rpm")->value().toInt();
     if(request->hasParam("speed")) ecus[0].vehicle_speed = request->getParam("speed")->value().toInt();
+    if(request->hasParam("temp")) ecus[0].engine_temp = request->getParam("temp")->value().toInt();
+    if(request->hasParam("maf")) ecus[0].maf_rate = request->getParam("maf")->value().toFloat();
+    if(request->hasParam("timing")) ecus[0].timing_advance = request->getParam("timing")->value().toFloat();
+    if(request->hasParam("fuel_pressure")) ecus[0].fuel_pressure = request->getParam("fuel_pressure")->value().toInt();
+    if(request->hasParam("fuel_rate")) ecus[0].fuel_rate = request->getParam("fuel_rate")->value().toFloat();
+    if(request->hasParam("fuel")) ecus[0].fuel_level = request->getParam("fuel")->value().toFloat();
+    if(request->hasParam("dist_mil")) ecus[0].distance_with_mil = request->getParam("dist_mil")->value().toInt();
+    if(request->hasParam("voltage")) ecus[0].battery_voltage = request->getParam("voltage")->value().toFloat();
+    
+    if(request->hasParam("vin")) strncpy(ecus[0].vin, request->getParam("vin")->value().c_str(), 17);
+    if(request->hasParam("cal_id")) strncpy(ecus[0].cal_id, request->getParam("cal_id")->value().c_str(), 16);
+    if(request->hasParam("cvn")) strncpy(ecus[0].cvn, request->getParam("cvn")->value().c_str(), 8);
+    
+    if(request->hasParam("tcm_gear")) ecus[1].current_gear = request->getParam("tcm_gear")->value().toInt();
+
+    if(request->hasParam("dynamic_rpm")) dynamic_rpm_enabled = (request->getParam("dynamic_rpm")->value() == "true");
+    if(request->hasParam("misfire_sim")) misfire_simulation_enabled = (request->getParam("misfire_sim")->value() == "true");
+    if(request->hasParam("lean_mixture_sim")) lean_mixture_simulation_enabled = (request->getParam("lean_mixture_sim")->value() == "true");
+
+    if(request->hasParam("dtc_list")) {
+        String dtcs = request->getParam("dtc_list")->value();
+        ecus[0].num_dtcs = 0; // Очищаємо список перед оновленням
+        int start = 0;
+        while(start < dtcs.length()) {
+            int comma = dtcs.indexOf(',', start);
+            String token = (comma == -1) ? dtcs.substring(start) : dtcs.substring(start, comma);
+            token.trim();
+            if(token.length() > 0) addDTC(ecus[0], token.c_str());
+            if(comma == -1) break;
+            start = comma + 1;
+        }
+    }
     
     if(request->hasParam("mode")) {
         emulatorMode = (EmulatorMode)request->getParam("mode")->value().toInt();

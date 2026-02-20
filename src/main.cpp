@@ -206,14 +206,13 @@ void loop() {
           }
       }
 
-      static unsigned long last_dynamic_notify = 0;
-      // Оновлюємо веб-інтерфейс та дисплей не частіше ніж раз на 500 мс, щоб не перевантажувати
-      if (now - last_dynamic_notify > 500) {
-          last_dynamic_notify = now;
+      static unsigned long last_notify = 0;
+      if (now - last_notify > 500) {
+          last_notify = now;
           notifyClients();
-          updateDisplay();
       }
   }
+
   ws.cleanupClients();
   }
 }
@@ -223,6 +222,8 @@ void updateDisplay() {
   tft.setCursor(0, 0);
   tft.setTextSize(1);
   
+  char buf1[15], buf2[15];
+
   tft.setTextColor(ST7735_CYAN);
   tft.print("MODE: ");
   if (emulatorMode == MODE_OBD_11BIT) tft.println("OBD 11b");
@@ -237,8 +238,6 @@ void updateDisplay() {
   tft.print("VIN: ");
   tft.println(ecus[0].vin);
   tft.println(""); // Spacer
-
-  char buf1[15], buf2[15];
 
   // Line 1: RPM & Speed
   snprintf(buf1, sizeof(buf1), "RPM: %d", ecus[0].engine_rpm);
