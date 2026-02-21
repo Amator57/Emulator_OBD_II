@@ -134,6 +134,7 @@ const char index_html[] PROGMEM = R"rawliteral(
                 <input type="number" id="dist_mil" name="dist_mil" value="0" min="0">
 
                 <input type="submit" id="submitBtn" value="Update Emulator Data">
+                <button type="button" class="button-blue" onclick="updateAndShow(0)">Update Display</button>
                 <button type="button" id="clearDtcBtn" class="button-red">Clear All DTCs</button>
                 <button type="button" id="cycleBtn" class="button-blue">Simulate Driving Cycle</button>
                 <div id="status" style="margin-top: 15px; font-weight: bold; text-align: center; min-height: 1.2em;"></div>
@@ -155,6 +156,10 @@ const char index_html[] PROGMEM = R"rawliteral(
                 <span class="formula">Formula: (A*256+B)/4</span>
                 <input type="number" id="rpm" name="rpm" value="1500">
 
+                <label for="load">Engine Load (%) (PID 0x04):</label>
+                <span class="formula">Formula: A * 100/255</span>
+                <input type="number" id="load" name="load" step="0.1" value="35.0">
+
                 <label for="temp">Engine Temp (C) (PID 0x05):</label>
                 <span class="formula">Formula: A - 40</span>
                 <input type="number" id="temp" name="temp" value="90">
@@ -163,9 +168,33 @@ const char index_html[] PROGMEM = R"rawliteral(
                 <span class="formula">Formula: A</span>
                 <input type="number" id="speed" name="speed" value="60">
 
+                <label for="map">MAP (kPa) (PID 0x0B):</label>
+                <span class="formula">Formula: A</span>
+                <input type="number" id="map" name="map" value="40">
+
+                <label for="iat">Intake Air Temp (C) (PID 0x0F):</label>
+                <span class="formula">Formula: A - 40</span>
+                <input type="number" id="iat" name="iat" value="30">
+
                 <label for="maf">MAF Rate (g/s) (PID 0x10):</label>
                 <span class="formula">Formula: (A*256+B)/100</span>
                 <input type="number" id="maf" name="maf" step="0.1" value="10.0">
+
+                <label for="tps">Throttle Position (%) (PID 0x11):</label>
+                <span class="formula">Formula: A * 100/255</span>
+                <input type="number" id="tps" name="tps" step="0.1" value="15.0">
+
+                <label for="stft">Short Term Fuel Trim (%) (PID 0x06):</label>
+                <span class="formula">Formula: (A-128)*100/128</span>
+                <input type="number" id="stft" name="stft" step="0.1" value="0.0">
+
+                <label for="ltft">Long Term Fuel Trim (%) (PID 0x07):</label>
+                <span class="formula">Formula: (A-128)*100/128</span>
+                <input type="number" id="ltft" name="ltft" step="0.1" value="2.5">
+
+                <label for="o2">O2 Sensor B1S1 (V) (PID 0x14):</label>
+                <span class="formula">Formula: A/200</span>
+                <input type="number" id="o2" name="o2" step="0.01" value="0.45">
 
                 <label for="fuel_pressure">Fuel Pressure (kPa) (PID 0x0A):</label>
                 <span class="formula">Formula: A * 3</span>
@@ -174,6 +203,7 @@ const char index_html[] PROGMEM = R"rawliteral(
                 <label for="timing">Timing Advance (deg) (PID 0x0E):</label>
                 <span class="formula">Formula: (A-128)/2</span>
                 <input type="number" id="timing" name="timing" step="0.5" value="5.0">
+                <button type="button" class="button-blue" onclick="updateAndShow(1)">Update Display</button>
             </div>
 
             <div id="page-pids20" class="page-content">
@@ -181,6 +211,7 @@ const char index_html[] PROGMEM = R"rawliteral(
                 <label for="fuel">Fuel Level (%) (PID 0x2F):</label>
                 <span class="formula">Formula: A * 100/255</span>
                 <input type="number" id="fuel" name="fuel" step="0.1" value="75.0" min="0" max="100">
+                <button type="button" class="button-blue" onclick="updateAndShow(1)">Update Display</button>
             </div>
 
             <div id="page-pids40" class="page-content">
@@ -188,6 +219,7 @@ const char index_html[] PROGMEM = R"rawliteral(
                 <label for="fuel_rate">Engine Fuel Rate (L/h) (PID 0x5E):</label>
                 <span class="formula">Formula: ((A*256)+B)/20</span>
                 <input type="number" id="fuel_rate" name="fuel_rate" step="0.1" value="1.5">
+                <button type="button" class="button-blue" onclick="updateAndShow(1)">Update Display</button>
             </div>
 
             <div id="page-pids60" class="page-content">
@@ -209,6 +241,7 @@ const char index_html[] PROGMEM = R"rawliteral(
                     <input type="number" name="m06_t2_min" value="0">
                     <input type="number" name="m06_t2_max" value="65535">
                 </div>
+                <button type="button" class="button-blue" onclick="updateAndShow(2)">Update Display</button>
             </div>
 
             <div id="page-tcm" class="page-content">
@@ -216,6 +249,7 @@ const char index_html[] PROGMEM = R"rawliteral(
                 <label for="tcm_gear">Current Gear (PID 0xA4 - Custom):</label>
                 <span class="formula">Value: 0=Neutral, 1-6=Gears, 255=Reverse</span>
                 <input type="number" id="tcm_gear" name="tcm_gear" value="1" min="0" max="255">
+                <button type="button" class="button-blue" onclick="updateAndShow(3)">Update Display</button>
             </div>
 
             <div id="page-faults" class="page-content">
@@ -275,6 +309,7 @@ const char index_html[] PROGMEM = R"rawliteral(
                 </div>
                 
                 <h3>Quick Faults</h3>
+                <button type="button" class="button-blue" onclick="updateAndShow(4)">Update Display</button>
                 <button type="button" class="button-red" onclick="injectRandomDTC()">Inject Random DTC</button>
             </div>
             
@@ -288,6 +323,7 @@ const char index_html[] PROGMEM = R"rawliteral(
                     <span>Enable CAN Logging (Real-time)</span>
                 </label>
                 <div id="can_log_area"></div>
+                <button type="button" class="button-blue" onclick="updateAndShow(4)">Update Display</button>
                 <button type="button" onclick="document.getElementById('can_log_area').innerHTML = ''">Clear Log</button>
             </div>
         </form>
@@ -316,6 +352,13 @@ const char index_html[] PROGMEM = R"rawliteral(
                 <p><strong>Temp:</strong> <span id="status_temp">N/A</span> &deg;C</p>
                 <p><strong>Speed:</strong> <span id="status_speed">N/A</span> km/h</p>
                 <p><strong>MAF:</strong> <span id="status_maf">N/A</span> g/s</p>
+                <p><strong>Load:</strong> <span id="status_load">N/A</span> %</p>
+                <p><strong>MAP:</strong> <span id="status_map">N/A</span> kPa</p>
+                <p><strong>TPS:</strong> <span id="status_tps">N/A</span> %</p>
+                <p><strong>IAT:</strong> <span id="status_iat">N/A</span> &deg;C</p>
+                <p><strong>STFT:</strong> <span id="status_stft">N/A</span> %</p>
+                <p><strong>LTFT:</strong> <span id="status_ltft">N/A</span> %</p>
+                <p><strong>O2 B1S1:</strong> <span id="status_o2">N/A</span> V</p>
                 <p><strong>Timing Adv:</strong> <span id="status_timing">N/A</span> deg</p>
                 <p><strong>Fuel Rate:</strong> <span id="status_fuel_rate">N/A</span> L/h</p>
                 <p><strong>Fuel Level:</strong> <span id="status_fuel">N/A</span> %</p>
@@ -359,6 +402,36 @@ const char index_html[] PROGMEM = R"rawliteral(
             if (pageId === 'page-live') {
                 resizeCanvas(); // Redraw chart when its tab is shown
             }
+        }
+
+        function updateAndShow(pageIndex) {
+            const form = document.getElementById('updateForm');
+            const formData = new FormData(form);
+            const params = new URLSearchParams();
+            for (const pair of formData) {
+                if (pair[1]) {
+                    params.append(pair[0], pair[1]);
+                }
+            }
+            params.append('page', pageIndex);
+            
+            const url = form.action + '?' + params.toString();
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = 'Updating Display...';
+            
+            fetch(url)
+                .then(response => response.text())
+                .then(data => {
+                    statusDiv.textContent = 'Display Updated';
+                    statusDiv.style.color = 'green';
+                })
+                .catch(error => {
+                    statusDiv.textContent = 'Error updating display';
+                    statusDiv.style.color = 'red';
+                })
+                .finally(() => {
+                    setTimeout(() => { statusDiv.textContent = ''; }, 2000);
+                });
         }
 
         function injectRandomDTC() {
@@ -657,6 +730,15 @@ const char index_html[] PROGMEM = R"rawliteral(
             document.getElementById('status_temp').textContent = data.temp;
             document.getElementById('status_speed').textContent = data.speed;
             document.getElementById('status_maf').textContent = Number(data.maf).toFixed(1);
+            
+            document.getElementById('status_load').textContent = Number(data.load).toFixed(1);
+            document.getElementById('status_map').textContent = data.map;
+            document.getElementById('status_tps').textContent = Number(data.tps).toFixed(1);
+            document.getElementById('status_iat').textContent = data.iat;
+            document.getElementById('status_stft').textContent = Number(data.stft).toFixed(1);
+            document.getElementById('status_ltft').textContent = Number(data.ltft).toFixed(1);
+            document.getElementById('status_o2').textContent = Number(data.o2).toFixed(2);
+
             document.getElementById('status_timing').textContent = Number(data.timing).toFixed(1);
             document.getElementById('status_fuel_rate').textContent = Number(data.fuel_rate).toFixed(1);
             document.getElementById('status_fuel').textContent = Number(data.fuel).toFixed(1);
@@ -700,6 +782,13 @@ const char index_html[] PROGMEM = R"rawliteral(
             document.getElementById('temp').value = data.temp;
             document.getElementById('speed').value = data.speed;
             document.getElementById('maf').value = Number(data.maf).toFixed(1);
+            document.getElementById('load').value = Number(data.load).toFixed(1);
+            document.getElementById('map').value = data.map;
+            document.getElementById('tps').value = Number(data.tps).toFixed(1);
+            document.getElementById('iat').value = data.iat;
+            document.getElementById('stft').value = Number(data.stft).toFixed(1);
+            document.getElementById('ltft').value = Number(data.ltft).toFixed(1);
+            document.getElementById('o2').value = Number(data.o2).toFixed(2);
             document.getElementById('timing').value = Number(data.timing).toFixed(1);
             document.getElementById('fuel_pressure').value = data.fuel_pressure;
             document.getElementById('fuel_rate').value = Number(data.fuel_rate).toFixed(1);

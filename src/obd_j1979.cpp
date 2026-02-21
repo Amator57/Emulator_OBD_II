@@ -16,6 +16,8 @@ void sendCalId(ECU &ecu, byte pid, bool use29bit);
 void sendCvn(ECU &ecu, byte pid, bool use29bit);
 void sendPermanentDTCs(ECU &ecu, bool use29bit);
 void sendNegativeResponse(byte service, byte nrc, bool use29bit);
+void handleUDSRequest(ECU &ecu, uint32_t id, const uint8_t* data, uint16_t len);
+bool isotp_send(uint32_t id, const uint8_t* data, uint16_t len, bool extended);
 
 void handleOBDRequest(uint32_t id, const uint8_t* data, uint16_t len) {
     // Error Injection
@@ -137,8 +139,28 @@ void sendCurrentData(ECU &ecu, byte pid, bool use29bit) {
             len += 4;
             break;
         }
+        case 0x04: { // Engine Load
+            data[2] = (byte)((ecu.engine_load * 255.0) / 100.0);
+            len += 1;
+            break;
+        }
         case 0x05: { // Coolant Temp
             data[2] = ecu.engine_temp + 40;
+            len += 1;
+            break;
+        }
+        case 0x06: { // Short Term Fuel Trim
+            data[2] = (byte)(((ecu.short_term_fuel_trim + 100.0) * 128.0) / 100.0);
+            len += 1;
+            break;
+        }
+        case 0x07: { // Long Term Fuel Trim
+            data[2] = (byte)(((ecu.long_term_fuel_trim + 100.0) * 128.0) / 100.0);
+            len += 1;
+            break;
+        }
+        case 0x0B: { // MAP
+            data[2] = ecu.map_pressure;
             len += 1;
             break;
         }
@@ -164,9 +186,25 @@ void sendCurrentData(ECU &ecu, byte pid, bool use29bit) {
             len += 1;
             break;
         }
+        case 0x0F: { // Intake Air Temp
+            data[2] = ecu.intake_temp + 40;
+            len += 1;
+            break;
+        }
         case 0x10: { // MAF
             int val = ecu.maf_rate * 100;
             data[2] = highByte(val); data[3] = lowByte(val);
+            len += 2;
+            break;
+        }
+        case 0x11: { // Throttle Position
+            data[2] = (byte)((ecu.throttle_pos * 255.0) / 100.0);
+            len += 1;
+            break;
+        }
+        case 0x14: { // O2 Sensor Bank 1 Sensor 1 (Voltage + Trim)
+            data[2] = (byte)(ecu.o2_voltage * 200.0); // 0-1.275V
+            data[3] = (byte)(((ecu.o2_trim + 100.0) * 128.0) / 100.0);
             len += 2;
             break;
         }
@@ -315,7 +353,7 @@ void sendMode06Data(ECU &ecu, byte pid, bool use29bit) {
     data[0] = 0x46; data[1] = pid;
 
     int byte_count = 0;
-    byte data_bytes[30];
+    byte data_bytes[64]; // Збільшено для безпеки (MAX_MODE06_TESTS * 7)
 
     for (int i = 0; i < MAX_MODE06_TESTS; i++) {
         if (ecu.mode06_tests[i].enabled) {

@@ -47,6 +47,14 @@ struct ECU {
     int engine_temp;
     int vehicle_speed;
     float maf_rate;
+    float engine_load;
+    int map_pressure;
+    float throttle_pos;
+    int intake_temp;
+    float short_term_fuel_trim;
+    float long_term_fuel_trim;
+    float o2_voltage;
+    float o2_trim;
     float timing_advance;
     float fuel_rate;
     int fuel_pressure;

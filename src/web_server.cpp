@@ -2,22 +2,15 @@
 #include <WiFi.h>
 #include <ESPAsyncWebServer.h>
 #include <ArduinoJson.h>
-#include "../include/web_page.h"
+#include "web_page.h"
 
 extern AsyncWebServer server;
 extern AsyncWebSocket ws;
-extern bool dynamic_rpm_enabled;
-extern bool misfire_simulation_enabled;
-extern bool lean_mixture_simulation_enabled;
+extern bool dynamic_rpm_enabled, misfire_simulation_enabled, lean_mixture_simulation_enabled, fault_incorrect_sequence, fault_silent_mode, fault_multiple_responses, fault_stmin_overflow, fault_wrong_flow_control, fault_partial_vin, can_logging_enabled;
+bool can_logging_enabled = false;
+extern int current_display_page;
 extern int frame_delay_ms;
 extern int error_injection_rate;
-extern bool fault_incorrect_sequence;
-extern bool fault_silent_mode;
-extern bool fault_multiple_responses;
-extern bool fault_stmin_overflow;
-extern bool fault_wrong_flow_control;
-extern bool fault_partial_vin;
-bool can_logging_enabled = false;
 
 // Forward declarations for functions used in web handlers
 void clearDTCs(ECU &ecu, bool use29bit);
@@ -54,6 +47,13 @@ String getJsonState() {
     doc["speed"] = ecus[0].vehicle_speed;
     doc["temp"] = ecus[0].engine_temp;
     doc["maf"] = ecus[0].maf_rate;
+    doc["load"] = ecus[0].engine_load;
+    doc["map"] = ecus[0].map_pressure;
+    doc["tps"] = ecus[0].throttle_pos;
+    doc["iat"] = ecus[0].intake_temp;
+    doc["stft"] = ecus[0].short_term_fuel_trim;
+    doc["ltft"] = ecus[0].long_term_fuel_trim;
+    doc["o2"] = ecus[0].o2_voltage;
     doc["voltage"] = ecus[0].battery_voltage;
     doc["mode"] = (int)emulatorMode;
     doc["bitrate"] = canBitrate;
@@ -68,6 +68,17 @@ String getJsonState() {
     doc["can_log"] = can_logging_enabled;
     doc["uds_session"] = ecus[0].uds_session;
     doc["uds_security"] = ecus[0].uds_security_unlocked;
+    doc["cycles"] = ecus[0].error_free_cycles;
+    
+    doc["freeze_frame_set"] = ecus[0].freezeFrameSet;
+    if (ecus[0].freezeFrameSet) {
+        doc["ff_dtc"] = ecus[0].dtcs[0];
+        doc["ff_rpm"] = ecus[0].freezeFrame.rpm;
+        doc["ff_speed"] = ecus[0].freezeFrame.speed;
+        doc["ff_temp"] = ecus[0].freezeFrame.temp;
+        doc["ff_maf"] = ecus[0].freezeFrame.maf;
+        doc["ff_fuel_pressure"] = ecus[0].freezeFrame.fuel_pressure;
+    }
     
     JsonArray dtcs_array = doc.createNestedArray("dtcs");
     for (int i = 0; i < ecus[0].num_dtcs; i++) {
@@ -100,6 +111,13 @@ void setupWebServer() {
     if(request->hasParam("temp")) ecus[0].engine_temp = request->getParam("temp")->value().toInt();
     if(request->hasParam("maf")) ecus[0].maf_rate = request->getParam("maf")->value().toFloat();
     if(request->hasParam("timing")) ecus[0].timing_advance = request->getParam("timing")->value().toFloat();
+    if(request->hasParam("load")) ecus[0].engine_load = request->getParam("load")->value().toFloat();
+    if(request->hasParam("map")) ecus[0].map_pressure = request->getParam("map")->value().toInt();
+    if(request->hasParam("tps")) ecus[0].throttle_pos = request->getParam("tps")->value().toFloat();
+    if(request->hasParam("iat")) ecus[0].intake_temp = request->getParam("iat")->value().toInt();
+    if(request->hasParam("stft")) ecus[0].short_term_fuel_trim = request->getParam("stft")->value().toFloat();
+    if(request->hasParam("ltft")) ecus[0].long_term_fuel_trim = request->getParam("ltft")->value().toFloat();
+    if(request->hasParam("o2")) ecus[0].o2_voltage = request->getParam("o2")->value().toFloat();
     if(request->hasParam("fuel_pressure")) ecus[0].fuel_pressure = request->getParam("fuel_pressure")->value().toInt();
     if(request->hasParam("fuel_rate")) ecus[0].fuel_rate = request->getParam("fuel_rate")->value().toFloat();
     if(request->hasParam("fuel")) ecus[0].fuel_level = request->getParam("fuel")->value().toFloat();
@@ -113,7 +131,7 @@ void setupWebServer() {
     if(request->hasParam("tcm_gear")) ecus[1].current_gear = request->getParam("tcm_gear")->value().toInt();
 
     if(request->hasParam("dynamic_rpm")) dynamic_rpm_enabled = (request->getParam("dynamic_rpm")->value() == "true");
-    if(request->hasParam("misfire_sim")) misfire_simulation_enabled = (request->getParam("misfire_sim")->value() == "true");
+   if(request->hasParam("misfire_sim")) misfire_simulation_enabled = (request->getParam("misfire_sim")->value() == "true");
     if(request->hasParam("lean_mixture_sim")) lean_mixture_simulation_enabled = (request->getParam("lean_mixture_sim")->value() == "true");
 
     if(request->hasParam("dtc_list")) {
@@ -140,10 +158,10 @@ void setupWebServer() {
             initCAN(canBitrate);
         }
     }
-    if(request->hasParam("frame_delay")) {
+   if(request->hasParam("frame_delay")) {
         frame_delay_ms = request->getParam("frame_delay")->value().toInt();
-    }
-    if(request->hasParam("error_rate")) {
+   }
+   if(request->hasParam("error_rate")) {
         error_injection_rate = request->getParam("error_rate")->value().toInt();
     }
     
@@ -156,9 +174,13 @@ void setupWebServer() {
     if(request->hasParam("fault_partial_vin")) fault_partial_vin = (request->getParam("fault_partial_vin")->value() == "true");
 
     if(request->hasParam("ecu0_en")) ecus[0].enabled = (request->getParam("ecu0_en")->value() == "true");
-    if(request->hasParam("ecu1_en")) ecus[1].enabled = (request->getParam("ecu1_en")->value() == "true");
+   if(request->hasParam("ecu1_en")) ecus[1].enabled = (request->getParam("ecu1_en")->value() == "true");
     if(request->hasParam("can_log")) can_logging_enabled = (request->getParam("can_log")->value() == "true");
     
+    if(request->hasParam("page")) {
+        current_display_page = request->getParam("page")->value().toInt();
+    }
+
     updateDisplay();
     notifyClients();
     request->send(200, "text/plain", "Updated");
@@ -167,6 +189,16 @@ void setupWebServer() {
   server.on("/clear_dtc", HTTP_GET, [] (AsyncWebServerRequest *request) {
     clearDTCs(ecus[0], false);
     request->send(200, "text/plain", "Cleared");
+  });
+
+  server.on("/cycle", HTTP_GET, [] (AsyncWebServerRequest *request) {
+    completeDrivingCycle(ecus[0], false);
+    request->send(200, "text/plain", "Cycle Completed");
+  });
+
+  server.on("/save_nvs", HTTP_GET, [] (AsyncWebServerRequest *request) {
+    saveConfig();
+    request->send(200, "text/plain", "Saved to NVS");
   });
 
   server.on("/config.json", HTTP_GET, [](AsyncWebServerRequest *request){

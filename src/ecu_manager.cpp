@@ -18,6 +18,14 @@ void setupEcus() {
     ecus[0].engine_temp = 90;
     ecus[0].vehicle_speed = 60;
     ecus[0].maf_rate = 10.0;
+    ecus[0].engine_load = 35.0;
+    ecus[0].map_pressure = 40;
+    ecus[0].throttle_pos = 15.0;
+    ecus[0].intake_temp = 30;
+    ecus[0].short_term_fuel_trim = 0.0;
+    ecus[0].long_term_fuel_trim = 2.5;
+    ecus[0].o2_voltage = 0.45;
+    ecus[0].o2_trim = 0.0;
     ecus[0].timing_advance = 5.0;
     ecus[0].fuel_rate = 1.5;
     ecus[0].fuel_pressure = 350;
@@ -27,7 +35,10 @@ void setupEcus() {
     ecus[0].freezeFrameSet = false;
     ecus[0].error_free_cycles = 0;
 
-    ecus[0].supported_pids_01_20 = (1UL << (32 - 0x01)) | (1UL << (32 - 0x05)) | (1UL << (32 - 0x0A)) | (1UL << (32 - 0x0E)) | (1UL << (32 - 0x0C)) | (1UL << (32 - 0x0D)) | (1UL << (32 - 0x10)) | (1UL << (32 - 0x20));
+    ecus[0].supported_pids_01_20 = (1UL << (32 - 0x01)) | (1UL << (32 - 0x04)) | (1UL << (32 - 0x05)) | (1UL << (32 - 0x06)) | 
+                                   (1UL << (32 - 0x07)) | (1UL << (32 - 0x0A)) | (1UL << (32 - 0x0B)) | (1UL << (32 - 0x0C)) | 
+                                   (1UL << (32 - 0x0D)) | (1UL << (32 - 0x0E)) | (1UL << (32 - 0x0F)) | (1UL << (32 - 0x10)) | 
+                                   (1UL << (32 - 0x11)) | (1UL << (32 - 0x14)) | (1UL << (32 - 0x20));
     ecus[0].supported_pids_21_40 = (1UL << (32 - (0x2F - 0x20))) | (1UL << (32 - (0x31 - 0x20))) | (1UL << (32 - (0x40 - 0x20)));
     ecus[0].supported_pids_41_60 = (1UL << (32 - (0x5E - 0x40))) | (1UL << (32 - (0x60 - 0x40)));
     ecus[0].supported_pids_61_80 = 0;
@@ -36,6 +47,18 @@ void setupEcus() {
     ecus[0].uds_session = 0x01;
     ecus[0].uds_security_unlocked = false;
     ecus[0].uds_seed = 0;
+    
+    // --- Mode 06 Tests Init ---
+    // Test 1: Catalyst Monitor
+    ecus[0].mode06_tests[0].testId = 0x01;
+    ecus[0].mode06_tests[0].value = 300;
+    ecus[0].mode06_tests[0].min_limit = 0;
+    ecus[0].mode06_tests[0].max_limit = 500;
+    ecus[0].mode06_tests[0].enabled = true;
+    
+    // Test 2: EGR Monitor
+    ecus[0].mode06_tests[1].testId = 0x02;
+    ecus[0].mode06_tests[1].enabled = false; // Disabled by default
 
     // --- Setup TCM (Transmission Control Module) ---
     ecus[1].name = "TCM";

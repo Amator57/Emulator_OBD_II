@@ -1,4 +1,5 @@
 #include "shared.h"
+#include <Arduino.h> // Для esp_random() та інших функцій
 
 // UDS Negative Response Codes (NRC)
 #define NRC_SERVICE_NOT_SUPPORTED 0x11

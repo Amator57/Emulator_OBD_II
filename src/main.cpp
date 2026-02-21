@@ -56,6 +56,8 @@ bool fault_stmin_overflow = false;
 bool fault_wrong_flow_control = false;
 bool fault_partial_vin = false;
 
+int current_display_page = 0; // 0=General, 1=PIDs, 2=Mode06, 3=TCM, 4=Faults
+
 // --- Function Prototypes (from other modules) ---
 bool initCAN(int bitrate);
 void setupEcus();
@@ -66,6 +68,14 @@ void completeDrivingCycle(ECU &ecu, bool use29bit);
 void parseJsonConfig(String &json_buffer);
 void saveConfig();
 void loadConfig();
+void logCAN(const twai_message_t& frame, bool rx);
+void notifyClients();
+void handleOBDRequest(uint32_t id, const uint8_t* data, uint16_t len);
+void isotp_init();
+void isotp_on_frame(const twai_message_t& frame);
+void isotp_poll();
+bool isotp_get_message(uint32_t* id, uint8_t* data, uint16_t* len);
+
 
 
 void setup() {
@@ -166,16 +176,34 @@ void loop() {
       // Динамічна зміна інших параметрів для демонстрації графіків
       ecus[0].maf_rate = 5.0 + (ecus[0].engine_rpm / 100.0); // Приблизна залежність
       ecus[0].fuel_rate = 0.5 + (ecus[0].engine_rpm / 1000.0); // Приблизна залежність
+      
+      // --- New Simulation Logic ---
+      // Throttle Position (TPS) follows RPM roughly
+      ecus[0].throttle_pos = (ecus[0].engine_rpm - 800.0) / 60.0; 
+      if(ecus[0].throttle_pos < 0) ecus[0].throttle_pos = 0;
+      if(ecus[0].throttle_pos > 100) ecus[0].throttle_pos = 100;
+
+      // Load follows Throttle; MAP follows Load
+      ecus[0].engine_load = 15.0 + (ecus[0].throttle_pos * 0.8);
+      ecus[0].map_pressure = 30 + (int)(ecus[0].engine_load * 0.7); // 30kPa idle -> ~100kPa WOT
+      
+      // O2 Sensor Oscillation (0.1V - 0.9V)
+      ecus[0].o2_voltage = 0.5 + 0.4 * sin(now / 200.0);
+      
       if (!lean_mixture_simulation_enabled) ecus[0].fuel_pressure = 350 + (ecus[0].engine_rpm / 50); // Нормальна робота
 
       // --- TCM Simulation (Automatic Gear Shifting) ---
-      // Проста логіка АКПП залежно від швидкості
-      if (ecus[0].vehicle_speed < 10) ecus[1].current_gear = 1;
-      else if (ecus[0].vehicle_speed < 30) ecus[1].current_gear = 2;
-      else if (ecus[0].vehicle_speed < 50) ecus[1].current_gear = 3;
-      else if (ecus[0].vehicle_speed < 80) ecus[1].current_gear = 4;
-      else if (ecus[0].vehicle_speed < 110) ecus[1].current_gear = 5;
-      else ecus[1].current_gear = 6;
+      // Логіка: Визначаємо передачу, а швидкість розраховуємо від RPM
+      // Припустимо: Speed = RPM * GearRatio * Constant
+      // Спрощені коефіцієнти для передач 1-6
+      float gear_ratios[] = {0, 0.008, 0.014, 0.022, 0.030, 0.042, 0.055}; 
+      
+      // Просте перемикання передач на основі RPM (як в автоматі)
+      if (ecus[0].engine_rpm > 3500 && ecus[1].current_gear < 6) ecus[1].current_gear++;
+      else if (ecus[0].engine_rpm < 1200 && ecus[1].current_gear > 1) ecus[1].current_gear--;
+      
+      // Розрахунок швидкості на основі RPM та поточної передачі
+      ecus[0].vehicle_speed = ecus[0].engine_rpm * gear_ratios[ecus[1].current_gear];
 
       // Симуляція пробігу з помилкою
       if (ecus[0].num_dtcs > 0) {
@@ -221,57 +249,92 @@ void updateDisplay() {
   tft.fillScreen(ST7735_BLACK);
   tft.setCursor(0, 0);
   tft.setTextSize(1);
-  
-  char buf1[15], buf2[15];
 
   tft.setTextColor(ST7735_CYAN);
-  tft.print("MODE: ");
-  if (emulatorMode == MODE_OBD_11BIT) tft.println("OBD 11b");
-  else if (emulatorMode == MODE_UDS_29BIT) tft.println("UDS 29b");
-  else if (emulatorMode == MODE_HYBRID) tft.println("HYBRID");
-  else tft.println("AUTO");
+  if (current_display_page == 0) tft.print("DASHBOARD");
+  else if (current_display_page == 1) tft.print("PIDS VIEW");
+  else if (current_display_page == 2) tft.print("MODE 06");
+  else if (current_display_page == 3) tft.print("TCM INFO");
+  else if (current_display_page == 4) tft.print("SYSTEM/FAULTS");
   
-  tft.print("CAN: "); tft.print(canBitrate/1000); tft.println("k");
+  tft.print(" ");
+  if (emulatorMode == MODE_OBD_11BIT) tft.println("11b");
+  else if (emulatorMode == MODE_UDS_29BIT) tft.println("29b");
+  else tft.println("AUTO");
   tft.println("---------------------");
   
-  tft.setTextColor(ST7735_WHITE);
-  tft.print("VIN: ");
-  tft.println(ecus[0].vin);
-  tft.println(""); // Spacer
+  char buf1[20], buf2[20];
 
-  // Line 1: RPM & Speed
-  snprintf(buf1, sizeof(buf1), "RPM: %d", ecus[0].engine_rpm);
-  snprintf(buf2, sizeof(buf2), "Speed: %d", ecus[0].vehicle_speed);
-  tft.printf("%-14s%s\n", buf1, buf2);
+  if (current_display_page == 0) {
+      // General / Dashboard
+      tft.setTextColor(ST7735_WHITE);
+      tft.print("VIN: "); tft.println(ecus[0].vin);
+      
+      snprintf(buf1, sizeof(buf1), "RPM: %d", ecus[0].engine_rpm);
+      snprintf(buf2, sizeof(buf2), "Spd: %d", ecus[0].vehicle_speed);
+      tft.printf("%-10s%s\n", buf1, buf2);
 
-  // Line 2: Temp & MAF
-  snprintf(buf1, sizeof(buf1), "Temp: %dC", ecus[0].engine_temp);
-  snprintf(buf2, sizeof(buf2), "MAF: %.1f", ecus[0].maf_rate);
-  tft.printf("%-14s%s\n", buf1, buf2);
+      snprintf(buf1, sizeof(buf1), "Tmp: %dC", ecus[0].engine_temp);
+      snprintf(buf2, sizeof(buf2), "MAF: %.1f", ecus[0].maf_rate);
+      tft.printf("%-10s%s\n", buf1, buf2);
 
-  // Line 3: Fuel & Voltage
-  snprintf(buf1, sizeof(buf1), "Fuel: %.0f%%", ecus[0].fuel_level);
-  snprintf(buf2, sizeof(buf2), "Volt: %.1f", ecus[0].battery_voltage);
-  tft.printf("%-14s%s\n", buf1, buf2);
-
-  // Line 4: Dist MIL & Cycles
-  snprintf(buf1, sizeof(buf1), "MIL km: %d", ecus[0].distance_with_mil);
-  snprintf(buf2, sizeof(buf2), "Cyc: %d/%d", ecus[0].error_free_cycles, CYCLES_THRESHOLD);
-  tft.printf("%-14s%s\n", buf1, buf2);
-
-  tft.println(""); // Spacer
-
-  tft.println("DTCs:");
-  if (ecus[0].num_dtcs > 0) {
-    tft.setTextColor(ST7735_RED);
-    String dtc_line = "";
-    for(int i=0; i<ecus[0].num_dtcs; i++) {
-        dtc_line += String(ecus[0].dtcs[i]) + " ";
-    }
-    tft.println(dtc_line);
-  } else {
-    tft.setTextColor(ST7735_GREEN);
-    tft.println("  None");
+      snprintf(buf1, sizeof(buf1), "Ful: %.0f%%", ecus[0].fuel_level);
+      snprintf(buf2, sizeof(buf2), "Vlt: %.1f", ecus[0].battery_voltage);
+      tft.printf("%-10s%s\n", buf1, buf2);
+      
+      tft.println("");
+      if (ecus[0].num_dtcs > 0) {
+          tft.setTextColor(ST7735_RED);
+          tft.print("DTCs: ");
+          for(int i=0; i<ecus[0].num_dtcs; i++) {
+              tft.print(ecus[0].dtcs[i]); tft.print(" ");
+          }
+          tft.println();
+      } else {
+          tft.setTextColor(ST7735_GREEN);
+          tft.println("No DTCs");
+      }
+  } 
+  else if (current_display_page == 1) {
+      // PIDs
+      tft.setTextColor(ST7735_WHITE);
+      tft.printf("Timing: %.1f deg\n", ecus[0].timing_advance);
+      tft.printf("Fuel Press: %d kPa\n", ecus[0].fuel_pressure);
+      tft.printf("Fuel Rate: %.1f L/h\n", ecus[0].fuel_rate);
+      tft.printf("Dist MIL: %d km\n", ecus[0].distance_with_mil);
+  }
+  else if (current_display_page == 2) {
+      // Mode 06
+      tft.setTextColor(ST7735_YELLOW);
+      tft.println("Mode 06 Tests:");
+      tft.setTextColor(ST7735_WHITE);
+      for(int i=0; i<2; i++) { // Show first 2 enabled tests
+           if(ecus[0].mode06_tests[i].enabled) {
+               tft.printf("ID:%02X Val:%d\n", ecus[0].mode06_tests[i].testId, ecus[0].mode06_tests[i].value);
+               tft.printf("Min:%d Max:%d\n", ecus[0].mode06_tests[i].min_limit, ecus[0].mode06_tests[i].max_limit);
+               tft.println("-");
+           }
+      }
+  }
+  else if (current_display_page == 3) {
+      // TCM
+      tft.setTextColor(ST7735_WHITE);
+      tft.setTextSize(2);
+      tft.print("GEAR: "); 
+      if(ecus[1].current_gear == 0) tft.println("N");
+      else if(ecus[1].current_gear == 255) tft.println("R");
+      else tft.println(ecus[1].current_gear);
+      tft.setTextSize(1);
+  }
+  else if (current_display_page == 4) {
+      // Faults
+      tft.setTextColor(ST7735_RED);
+      if(fault_silent_mode) tft.println("[!] Silent Mode");
+      if(fault_incorrect_sequence) tft.println("[!] Bad Seq Num");
+      if(error_injection_rate > 0) tft.printf("[!] Err Rate: %d%%\n", error_injection_rate);
+      
+      tft.setTextColor(ST7735_WHITE);
+      tft.print("IP: "); tft.println(WiFi.softAPIP());
   }
 }
 
@@ -366,6 +429,14 @@ String getJsonConfig() {
     doc["vehicle_speed"] = ecus[0].vehicle_speed;
     doc["maf_rate"] = ecus[0].maf_rate;
     doc["timing_advance"] = ecus[0].timing_advance;
+    doc["engine_load"] = ecus[0].engine_load;
+    doc["map_pressure"] = ecus[0].map_pressure;
+    doc["throttle_pos"] = ecus[0].throttle_pos;
+    doc["intake_temp"] = ecus[0].intake_temp;
+    doc["fuel_trim_s"] = ecus[0].short_term_fuel_trim;
+    doc["fuel_trim_l"] = ecus[0].long_term_fuel_trim;
+    doc["o2_volts"] = ecus[0].o2_voltage;
+
     doc["fuel_rate"] = ecus[0].fuel_rate;
     doc["fuel_pressure"] = ecus[0].fuel_pressure;
     doc["fuel_level"] = ecus[0].fuel_level;
@@ -410,6 +481,14 @@ void parseJsonConfig(String &json_buffer) {
     ecus[0].vehicle_speed = doc["vehicle_speed"] | 60;
     ecus[0].maf_rate = doc["maf_rate"] | 10.0;
     ecus[0].timing_advance = doc["timing_advance"] | 5.0;
+    ecus[0].engine_load = doc["engine_load"] | 35.0;
+    ecus[0].map_pressure = doc["map_pressure"] | 40;
+    ecus[0].throttle_pos = doc["throttle_pos"] | 15.0;
+    ecus[0].intake_temp = doc["intake_temp"] | 30;
+    ecus[0].short_term_fuel_trim = doc["fuel_trim_s"] | 0.0;
+    ecus[0].long_term_fuel_trim = doc["fuel_trim_l"] | 2.5;
+    ecus[0].o2_voltage = doc["o2_volts"] | 0.45;
+
     ecus[0].fuel_rate = doc["fuel_rate"] | 1.5;
     ecus[0].fuel_pressure = doc["fuel_pressure"] | 350;
     ecus[0].fuel_level = doc["fuel_level"] | 75.0;
@@ -466,6 +545,13 @@ void saveConfig() {
     preferences.putInt("speed", ecus[0].vehicle_speed);
     preferences.putFloat("maf", ecus[0].maf_rate);
     preferences.putFloat("timing", ecus[0].timing_advance);
+    preferences.putFloat("load", ecus[0].engine_load);
+    preferences.putInt("map", ecus[0].map_pressure);
+    preferences.putFloat("tps", ecus[0].throttle_pos);
+    preferences.putInt("iat", ecus[0].intake_temp);
+    preferences.putFloat("stft", ecus[0].short_term_fuel_trim);
+    preferences.putFloat("ltft", ecus[0].long_term_fuel_trim);
+
     preferences.putFloat("fuelRate", ecus[0].fuel_rate);
     preferences.putInt("fuelPres", ecus[0].fuel_pressure);
     preferences.putFloat("fuelLvl", ecus[0].fuel_level);
@@ -520,6 +606,13 @@ void loadConfig() {
     ecus[0].vehicle_speed = preferences.getInt("speed", 0);
     ecus[0].maf_rate = preferences.getFloat("maf", 2.5);
     ecus[0].timing_advance = preferences.getFloat("timing", 10.0);
+    ecus[0].engine_load = preferences.getFloat("load", 35.0);
+    ecus[0].map_pressure = preferences.getInt("map", 40);
+    ecus[0].throttle_pos = preferences.getFloat("tps", 15.0);
+    ecus[0].intake_temp = preferences.getInt("iat", 30);
+    ecus[0].short_term_fuel_trim = preferences.getFloat("stft", 0.0);
+    ecus[0].long_term_fuel_trim = preferences.getFloat("ltft", 2.5);
+
     ecus[0].fuel_rate = preferences.getFloat("fuelRate", 0.8);
     ecus[0].fuel_pressure = preferences.getInt("fuelPres", 350);
     ecus[0].fuel_level = preferences.getFloat("fuelLvl", 50.0);
