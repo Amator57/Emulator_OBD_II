@@ -40,7 +40,7 @@ void setupEcus() {
                                    (1UL << (32 - 0x0D)) | (1UL << (32 - 0x0E)) | (1UL << (32 - 0x0F)) | (1UL << (32 - 0x10)) | 
                                    (1UL << (32 - 0x11)) | (1UL << (32 - 0x14)) | (1UL << (32 - 0x20));
     ecus[0].supported_pids_21_40 = (1UL << (32 - (0x2F - 0x20))) | (1UL << (32 - (0x31 - 0x20))) | (1UL << (32 - (0x40 - 0x20)));
-    ecus[0].supported_pids_41_60 = (1UL << (32 - (0x5E - 0x40))) | (1UL << (32 - (0x60 - 0x40)));
+    ecus[0].supported_pids_41_60 = (1UL << (32 - (0x42 - 0x40))) | (1UL << (32 - (0x5E - 0x40))) | (1UL << (32 - (0x60 - 0x40)));
     ecus[0].supported_pids_61_80 = 0;
     ecus[0].supported_pids_09 = (1UL << (32 - 0x02)) | (1UL << (32 - 0x04)) | (1UL << (32 - 0x06));
     

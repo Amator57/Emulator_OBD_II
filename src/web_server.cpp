@@ -54,6 +54,10 @@ String getJsonState() {
     doc["stft"] = ecus[0].short_term_fuel_trim;
     doc["ltft"] = ecus[0].long_term_fuel_trim;
     doc["o2"] = ecus[0].o2_voltage;
+    doc["timing"] = ecus[0].timing_advance;
+    doc["fuel_pressure"] = ecus[0].fuel_pressure;
+    doc["fuel_rate"] = ecus[0].fuel_rate;
+    doc["fuel"] = ecus[0].fuel_level;
     doc["voltage"] = ecus[0].battery_voltage;
     doc["mode"] = (int)emulatorMode;
     doc["bitrate"] = canBitrate;

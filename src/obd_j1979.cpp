@@ -235,6 +235,12 @@ void sendCurrentData(ECU &ecu, byte pid, bool use29bit) {
             len += 4;
             break;
         }
+        case 0x42: { // Control Module Voltage
+            int val = ecu.battery_voltage * 1000;
+            data[2] = highByte(val); data[3] = lowByte(val);
+            len += 2;
+            break;
+        }
         case 0x5E: { // Fuel Rate
             int val = (int)(ecu.fuel_rate * 20);
             data[2] = highByte(val); data[3] = lowByte(val);

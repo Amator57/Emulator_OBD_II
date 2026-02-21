@@ -278,7 +278,7 @@ void updateDisplay() {
       snprintf(buf2, sizeof(buf2), "MAF: %.1f", ecus[0].maf_rate);
       tft.printf("%-10s%s\n", buf1, buf2);
 
-      snprintf(buf1, sizeof(buf1), "Ful: %.0f%%", ecus[0].fuel_level);
+      snprintf(buf1, sizeof(buf1), "Ful: %.1f%%", ecus[0].fuel_level);
       snprintf(buf2, sizeof(buf2), "Vlt: %.1f", ecus[0].battery_voltage);
       tft.printf("%-10s%s\n", buf1, buf2);
       
@@ -298,10 +298,14 @@ void updateDisplay() {
   else if (current_display_page == 1) {
       // PIDs
       tft.setTextColor(ST7735_WHITE);
-      tft.printf("Timing: %.1f deg\n", ecus[0].timing_advance);
-      tft.printf("Fuel Press: %d kPa\n", ecus[0].fuel_pressure);
-      tft.printf("Fuel Rate: %.1f L/h\n", ecus[0].fuel_rate);
-      tft.printf("Dist MIL: %d km\n", ecus[0].distance_with_mil);
+      tft.printf("RPM :%-5d   Spd :%d\n", ecus[0].engine_rpm, ecus[0].vehicle_speed);
+      tft.printf("Load:%-5.1f%%  Tmp:%dC\n", ecus[0].engine_load, ecus[0].engine_temp);
+      tft.printf("MAP :%-3d     IAT :%dC\n", ecus[0].map_pressure, ecus[0].intake_temp);
+      tft.printf("MAF :%-5.1f   TPS :%.1f%%\n", ecus[0].maf_rate, ecus[0].throttle_pos);
+      tft.printf("ST  :%-5.1f%%  LT  :%.1f%%\n", ecus[0].short_term_fuel_trim, ecus[0].long_term_fuel_trim);
+      tft.printf("O2  :%-4.2fV   Tim :%.1f\n", ecus[0].o2_voltage, ecus[0].timing_advance);
+      tft.printf("\n");
+      tft.printf("Volt:%-4.1fV   Press:%-3dkPa\n",ecus[0].battery_voltage, ecus[0].fuel_pressure);
   }
   else if (current_display_page == 2) {
       // Mode 06

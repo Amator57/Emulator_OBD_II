@@ -127,7 +127,7 @@ const char index_html[] PROGMEM = R"rawliteral(
                 <input type="text" id="dtc_list" name="dtc_list" placeholder="P0101,C0300,B1000">
 
                 <label for="voltage">Battery Voltage (V):</label>
-                <input type="number" id="voltage" name="voltage" step="0.1" value="14.2">
+                <input type="number" id="voltage" name="voltage" step="0.1" value="14.2" oninput="document.getElementById('voltage_pid').value = this.value">
 
                 <label for="dist_mil">Distance with MIL (km) (PID 0x31):</label>
                 <span class="formula">Formula: A*256 + B</span>
@@ -216,6 +216,10 @@ const char index_html[] PROGMEM = R"rawliteral(
 
             <div id="page-pids40" class="page-content">
                 <h2>Mode 01 PIDs [40-5F]</h2>
+                <label for="voltage_pid">Control Module Voltage (V) (PID 0x42):</label>
+                <span class="formula">Formula: (A*256+B)/1000</span>
+                <input type="number" id="voltage_pid" name="voltage" step="0.1" value="14.2" oninput="document.getElementById('voltage').value = this.value">
+
                 <label for="fuel_rate">Engine Fuel Rate (L/h) (PID 0x5E):</label>
                 <span class="formula">Formula: ((A*256)+B)/20</span>
                 <input type="number" id="fuel_rate" name="fuel_rate" step="0.1" value="1.5">
@@ -795,6 +799,7 @@ const char index_html[] PROGMEM = R"rawliteral(
             document.getElementById('fuel').value = Number(data.fuel).toFixed(1);
             document.getElementById('dist_mil').value = data.dist_mil;
             document.getElementById('voltage').value = Number(data.voltage).toFixed(1);
+            document.getElementById('voltage_pid').value = Number(data.voltage).toFixed(1);
             document.getElementById('dtc_list').value = data.dtcs.join(',');
             
             // Faults
