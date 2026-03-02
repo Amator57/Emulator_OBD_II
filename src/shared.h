@@ -62,6 +62,17 @@ struct ECU {
     int distance_with_mil;
     float battery_voltage;
     int current_gear;
+    
+    // New PIDs
+    int distance_mil_on;       // PID 0x21
+    float evap_purge;          // PID 0x2E
+    int warm_ups;              // PID 0x30
+    int baro_pressure;         // PID 0x33
+    float abs_load;            // PID 0x43
+    float command_equiv_ratio; // PID 0x44
+    float relative_throttle;   // PID 0x45
+    int ambient_temp;          // PID 0x46
+    int oil_temp;              // PID 0x5C
 
     // Supported PIDs
     uint32_t supported_pids_01_20;
@@ -134,6 +145,8 @@ extern bool fault_stmin_overflow;
 extern bool fault_wrong_flow_control;
 extern bool fault_partial_vin;
 extern bool can_logging_enabled;
+extern volatile bool need_display_update; // Прапорець для синхронізації дисплея
+extern volatile bool config_locked;       // Прапорець блокування конфігурації
 
 // --- Common Functions ---
 void updateDisplay();

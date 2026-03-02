@@ -4,7 +4,6 @@
 #include <driver/twai.h>
 #include <ArduinoJson.h>
 #include <Preferences.h>
-#include <freertos/semphr.h>
 
 #include "shared.h"
 // #include "web_page.h" // Moved to web_server.cpp
@@ -58,25 +57,14 @@ bool fault_multiple_responses = false;
 bool fault_stmin_overflow = false;
 bool fault_wrong_flow_control = false;
 bool fault_partial_vin = false;
-bool simulation_running = true; // Прапорець для контролю початку обміну (true за замовчуванням)
-volatile bool need_display_update = false; // Ініціалізація прапорця
-volatile bool need_can_reinit = false;     // Прапорець для безпечного перезапуску CAN
-volatile bool need_websocket_update = false; // Прапорець для оновлення клієнтів
-volatile bool need_clear_dtcs = false;       // Прапорець для очищення помилок
-volatile bool need_drive_cycle = false;      // Прапорець для циклу водіння
-volatile bool need_load_config = false;      // Прапорець для завантаження конфігу
-volatile bool need_save_config = false;      // Прапорець для збереження конфігу
-String pending_config_json;                  // Буфер для JSON конфігурації
-SemaphoreHandle_t configMutex = NULL;      // М'ютекс для захисту даних
 
 int current_display_page = 0; // 0=General, 1=PIDs, 2=Mode06, 3=TCM, 4=Faults
 
 // --- Function Prototypes (from other modules) ---
 bool initCAN(int bitrate);
-void pollCANStatus();
 void setupEcus();
 void setupWebServer();
-void clearDTCs(ECU &ecu, bool use29bit, bool sendResponse);
+void clearDTCs(ECU &ecu, bool use29bit);
 bool addDTC(ECU &ecu, const char* new_dtc);
 void completeDrivingCycle(ECU &ecu, bool use29bit);
 void parseJsonConfig(String &json_buffer);
@@ -90,14 +78,12 @@ void isotp_on_frame(const twai_message_t& frame);
 void isotp_poll();
 bool isotp_get_message(uint32_t* id, uint8_t* data, uint16_t* len);
 void saveWifi(String ssid, String pass);
-extern String getJsonState(); // Оголошуємо зовнішню функцію для генерації JSON
 
 
 
 void setup() {
   Serial.begin(115200);
   Serial.println("OBD-II Emulator-A Starting...");
-  configMutex = xSemaphoreCreateMutex(); // Створюємо м'ютекс
 
   setupEcus();
   
@@ -138,24 +124,24 @@ void setup() {
           // Обслуговуємо CAN шину, поки чекаємо на підключення до Wi-Fi, щоб уникнути тайм-ауту сканера
           twai_message_t rx_frame;
           if (twai_receive(&rx_frame, pdMS_TO_TICKS(10)) == ESP_OK) {
+              logCAN(rx_frame, true);
               isotp_on_frame(rx_frame);
           }
-          isotp_poll(); // Обробка черги ISO-TP
+          isotp_poll();
           uint32_t rxId = 0;
           uint8_t rxData[ISOTP_MAX_DATA_LEN] = {0};
           uint16_t rxLen = 0;
           if (isotp_get_message(&rxId, rxData, &rxLen)) {
               handleOBDRequest(rxId, rxData, rxLen);
           }
+          delay(50); // Невелика затримка, щоб дати попрацювати іншим задачам
       }
 
       if (WiFi.status() == WL_CONNECTED) {
           connected = true;
           Serial.println("\nWiFi Connected!");
           Serial.print("IP: "); Serial.println(WiFi.localIP());
-          tft.println("Mode: STA");
-          tft.print("IP: "); 
-          tft.println(WiFi.localIP());
+          tft.print("IP: "); tft.println(WiFi.localIP());
       } else {
           Serial.println("\nConnection failed. Falling back to AP mode.");
       }
@@ -167,7 +153,6 @@ void setup() {
       WiFi.softAP(ap_ssid, ap_password);
       IPAddress ip = WiFi.softAPIP();
       Serial.print(" AP IP: "); Serial.println(ip);
-      tft.println("Mode: AP");
       tft.print("AP IP: "); tft.println(ip);
   }
 
@@ -175,7 +160,7 @@ void setup() {
 
   Serial.println("Web server started.");
   delay(1000); // Зменшено затримку, щоб прискорити старт
-  // updateDisplay(); // Оновлення дисплея тепер не потрібне, все робиться вище
+  updateDisplay(); // Перше оновлення екрану з початковими даними
 }
 
 void loop() {
@@ -200,137 +185,103 @@ void loop() {
               canBitrate = (detect_stage == 0) ? 500000 : 250000;
               initCAN(canBitrate);
               Serial.printf("Auto-detect: Switching to %d bps\n", canBitrate);
-              // updateDisplay();
+              updateDisplay();
               last_switch = millis();
           }
       }
       // Continue simulation logic below...
   } else {
       // Normal Mode
-
-  // --- Безпечний перезапуск CAN з основного потоку ---
-  if (need_can_reinit) {
-      if (initCAN(canBitrate)) {
-          Serial.println("TWAI (CAN) re-initialized via Web Request.");
-          isotp_init(); // Обов'язково скидаємо ISO-TP після перезапуску драйвера
-      }
-      need_can_reinit = false;
-  }
-
   twai_message_t rx_frame;
   if (twai_receive(&rx_frame, pdMS_TO_TICKS(10)) == ESP_OK) {
       logCAN(rx_frame, true); // Log RX
       isotp_on_frame(rx_frame);
   }
 
-  pollCANStatus(); // Автоматичне відновлення шини при помилках (має працювати завжди)
-
   isotp_poll(); // Обробка черги ISO-TP (без delay)
 
   uint32_t rxId = 0;
   uint8_t rxData[ISOTP_MAX_DATA_LEN] = {0};
   uint16_t rxLen = 0;
-  String jsonToSend = ""; // Буфер для JSON, який буде відправлено
-  static unsigned long last_ws_update = 0; // Обмежувач частоти оновлення WebSocket
-
-  // Захищена секція: обробка даних, які можуть змінюватися веб-сервером
-  if (xSemaphoreTake(configMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
-      if (isotp_get_message(&rxId, rxData, &rxLen)) {
-          handleOBDRequest(rxId, rxData, rxLen);
-      }
-
-      // --- Відкладені дії з веб-інтерфейсу (виконуються в безпечному контексті) ---
-      if (need_load_config) {
-          parseJsonConfig(pending_config_json);
-          pending_config_json = "";
-          need_load_config = false;
-      }
-      if (need_save_config) {
-          saveConfig();
-          need_save_config = false;
-      }
-      if (need_clear_dtcs) {
-          clearDTCs(ecus[0], false, false);
-          need_clear_dtcs = false;
-      }
-      if (need_drive_cycle) {
-          completeDrivingCycle(ecus[0], false);
-          need_drive_cycle = false;
-      }
-      // Обмежуємо частоту відправки JSON (не частіше 150 мс), щоб не перевантажити мережу
-      if (need_websocket_update && (millis() - last_ws_update > 150)) {
-          jsonToSend = getJsonState(); 
-          need_websocket_update = false;
-          last_ws_update = millis();
-      }
-
-      // Безпечне оновлення дисплея з основного потоку
-      if (need_display_update && isoTpLink.txState == ISOTP_IDLE && isoTpLink.rxState == ISOTP_IDLE) {
-          // updateDisplay(); // Оновлення дисплея відключено
-          need_display_update = false;
-      }
-
-      // --- Simulation Logic (affects ECM - ecus[0]) ---
-      if (dynamic_rpm_enabled) {
-          unsigned long now = millis();
-          ecus[0].engine_rpm = 2500 + 1500 * sin(2 * PI * now / 5000.0);
-          ecus[1].engine_rpm = ecus[0].engine_rpm;
-          
-          ecus[0].maf_rate = 5.0 + (ecus[0].engine_rpm / 100.0);
-          ecus[0].fuel_rate = 0.5 + (ecus[0].engine_rpm / 1000.0);
-          
-          ecus[0].throttle_pos = (ecus[0].engine_rpm - 800.0) / 60.0; 
-          if(ecus[0].throttle_pos < 0) ecus[0].throttle_pos = 0;
-          if(ecus[0].throttle_pos > 100) ecus[0].throttle_pos = 100;
-
-          ecus[0].engine_load = 15.0 + (ecus[0].throttle_pos * 0.8);
-          ecus[0].map_pressure = 30 + (int)(ecus[0].engine_load * 0.7);
-          
-          ecus[0].o2_voltage = 0.5 + 0.4 * sin(now / 200.0);
-          
-          if (!lean_mixture_simulation_enabled) ecus[0].fuel_pressure = 350 + (ecus[0].engine_rpm / 50);
-
-          // TCM Simulation
-          float gear_ratios[] = {0, 0.008, 0.014, 0.022, 0.030, 0.042, 0.055}; 
-          if (ecus[0].engine_rpm > 3500 && ecus[1].current_gear < 6) ecus[1].current_gear++;
-          else if (ecus[0].engine_rpm < 1200 && ecus[1].current_gear > 1) ecus[1].current_gear--;
-          
-          ecus[0].vehicle_speed = ecus[0].engine_rpm * gear_ratios[ecus[1].current_gear];
-
-          if (ecus[0].num_dtcs > 0) {
-              static unsigned long last_dist_update = 0;
-              if (now - last_dist_update > 5000) {
-                  ecus[0].distance_with_mil++;
-                  last_dist_update = now;
-              }
-          }
-
-          if (misfire_simulation_enabled && ecus[0].engine_rpm > 3500) {
-              if (addDTC(ecus[0], "P0300")) {
-                  notifyClients();
-              }
-          }
-
-          if (lean_mixture_simulation_enabled) {
-              ecus[0].fuel_pressure = 150 + (rand() % 30);
-              if (ecus[0].fuel_pressure < 200 && ecus[0].engine_rpm > 2000) {
-                  if (addDTC(ecus[0], "P0171")) { notifyClients(); }
-              }
-          }
-
-          static unsigned long last_notify = 0;
-          if (now - last_notify > 500) {
-              last_notify = now;
-              need_websocket_update = true; // Просто встановлюємо прапорець
-          }
-      }
-      
-      xSemaphoreGive(configMutex);
+  if (isotp_get_message(&rxId, rxData, &rxLen)) {
+      handleOBDRequest(rxId, rxData, rxLen);
   }
 
-  // Відправка даних клієнтам відбувається ПОЗА межами м'ютекса, щоб уникнути Deadlock
-  if (jsonToSend.length() > 0) {
-      ws.textAll(jsonToSend);
+  // --- Simulation Logic (affects ECM - ecus[0]) ---
+  // Емуляція динамічної зміни RPM (синусоїда)
+  if (dynamic_rpm_enabled) {
+      unsigned long now = millis();
+      // Синусоїда: Центр 2500, Амплітуда 1500 (від 1000 до 4000), Період ~5 секунд
+      ecus[0].engine_rpm = 2500 + 1500 * sin(2 * PI * now / 5000.0);
+      // Sync other ECUs to the same RPM
+      ecus[1].engine_rpm = ecus[0].engine_rpm;
+      
+      // Динамічна зміна інших параметрів для демонстрації графіків
+      ecus[0].maf_rate = 5.0 + (ecus[0].engine_rpm / 100.0); // Приблизна залежність
+      ecus[0].fuel_rate = 0.5 + (ecus[0].engine_rpm / 1000.0); // Приблизна залежність
+      
+      // --- New Simulation Logic ---
+      // Throttle Position (TPS) follows RPM roughly
+      ecus[0].throttle_pos = (ecus[0].engine_rpm - 800.0) / 60.0; 
+      if(ecus[0].throttle_pos < 0) ecus[0].throttle_pos = 0;
+      if(ecus[0].throttle_pos > 100) ecus[0].throttle_pos = 100;
+
+      // Load follows Throttle; MAP follows Load
+      ecus[0].engine_load = 15.0 + (ecus[0].throttle_pos * 0.8);
+      ecus[0].map_pressure = 30 + (int)(ecus[0].engine_load * 0.7); // 30kPa idle -> ~100kPa WOT
+      
+      // O2 Sensor Oscillation (0.1V - 0.9V)
+      ecus[0].o2_voltage = 0.5 + 0.4 * sin(now / 200.0);
+      
+      if (!lean_mixture_simulation_enabled) ecus[0].fuel_pressure = 350 + (ecus[0].engine_rpm / 50); // Нормальна робота
+
+      // --- TCM Simulation (Automatic Gear Shifting) ---
+      // Логіка: Визначаємо передачу, а швидкість розраховуємо від RPM
+      // Припустимо: Speed = RPM * GearRatio * Constant
+      // Спрощені коефіцієнти для передач 1-6
+      float gear_ratios[] = {0, 0.008, 0.014, 0.022, 0.030, 0.042, 0.055}; 
+      
+      // Просте перемикання передач на основі RPM (як в автоматі)
+      if (ecus[0].engine_rpm > 3500 && ecus[1].current_gear < 6) ecus[1].current_gear++;
+      else if (ecus[0].engine_rpm < 1200 && ecus[1].current_gear > 1) ecus[1].current_gear--;
+      
+      // Розрахунок швидкості на основі RPM та поточної передачі
+      ecus[0].vehicle_speed = ecus[0].engine_rpm * gear_ratios[ecus[1].current_gear];
+
+      // Симуляція пробігу з помилкою
+      if (ecus[0].num_dtcs > 0) {
+          static unsigned long last_dist_update = 0;
+          if (now - last_dist_update > 5000) { // Додаємо 1 км кожні 5с для демонстрації
+              ecus[0].distance_with_mil++;
+              last_dist_update = now;
+          }
+      }
+
+      if (misfire_simulation_enabled && ecus[0].engine_rpm > 3500) {
+          // Якщо додали новий DTC, одразу оновлюємо інтерфейси
+          if (addDTC(ecus[0], "P0300")) {
+              notifyClients();
+              updateDisplay();
+          }
+      }
+
+      // Емуляція бідної суміші (P0171) при низькому тиску пального
+      if (lean_mixture_simulation_enabled) {
+          ecus[0].fuel_pressure = 150 + (rand() % 30); // Імітуємо падіння тиску до ~165 kPa
+          // Якщо тиск низький (< 200 kPa) і є навантаження (RPM > 2000)
+          if (ecus[0].fuel_pressure < 200 && ecus[0].engine_rpm > 2000) {
+              if (addDTC(ecus[0], "P0171")) {
+                  notifyClients();
+                  updateDisplay();
+              }
+          }
+      }
+
+      static unsigned long last_notify = 0;
+      if (now - last_notify > 500) {
+          last_notify = now;
+          notifyClients();
+      }
   }
 
   ws.cleanupClients();
@@ -338,10 +289,6 @@ void loop() {
 }
 
 void updateDisplay() {
-  // Функція відключена згідно з вимогою. 
-  // Вся ініціалізація дисплея відбувається в setup(), подальші оновлення не потрібні.
-  return; 
-  /*
   tft.fillScreen(ST7735_BLACK);
   tft.setCursor(0, 0);
   tft.setTextSize(1);
@@ -498,7 +445,6 @@ void updateDisplay() {
       tft.println("VIN:"); tft.println(ecus[3].vin);
       tft.printf("CalID: %s\n", ecus[3].cal_id);
   }
-  */
 }
 
 // Допоміжна функція для додавання DTC, якщо він ще не існує
@@ -576,6 +522,7 @@ void completeDrivingCycle(ECU &ecu, bool use29bit) {
         ecu.error_free_cycles = 0;
         Serial.println("  Current DTCs present. Error-free cycles counter reset to 0.");
     }
+    updateDisplay();
     notifyClients();
 }
 
@@ -604,10 +551,6 @@ String getJsonConfig() {
     doc["fuel_level"] = ecus[0].fuel_level;
     doc["dist_mil"] = ecus[0].distance_with_mil;
     doc["voltage"] = ecus[0].battery_voltage;
-    doc["tcm_gear"] = ecus[1].current_gear;
-    doc["abs_speed"] = ecus[2].vehicle_speed;
-    doc["abs_vin"] = ecus[2].vin;
-    doc["srs_vin"] = ecus[3].vin;
     doc["dynamic_rpm_enabled"] = dynamic_rpm_enabled;
     doc["misfire_simulation_enabled"] = misfire_simulation_enabled;
     doc["lean_mixture_simulation_enabled"] = lean_mixture_simulation_enabled;
@@ -671,11 +614,6 @@ void parseJsonConfig(String &json_buffer) {
     // TCM
     ecus[1].current_gear = doc["tcm_gear"] | 1;
 
-    // ABS & SRS
-    ecus[2].vehicle_speed = doc["abs_speed"] | 60;
-    strncpy(ecus[2].vin, doc["abs_vin"] | "123EMULATOR001ABS", 17);
-    strncpy(ecus[3].vin, doc["srs_vin"] | "123EMULATOR001SRS", 17);
-
     dynamic_rpm_enabled = doc["dynamic_rpm_enabled"] | false;
     misfire_simulation_enabled = doc["misfire_simulation_enabled"] | false;
     lean_mixture_simulation_enabled = doc["lean_mixture_simulation_enabled"] | false;
@@ -694,7 +632,7 @@ void parseJsonConfig(String &json_buffer) {
     ecus[0].freezeFrame.fuel_pressure = doc["ff_pres"] | ecus[0].freezeFrame.fuel_pressure;
 
     // Clear existing DTCs before loading new ones
-    clearDTCs(ecus[0], false, false); // Не відправляємо CAN-відповідь при завантаженні конфігу
+    clearDTCs(ecus[0], false);
 
     if (doc.containsKey("dtcs")) {
         JsonArray dtcs_array = doc["dtcs"].as<JsonArray>();
@@ -704,8 +642,8 @@ void parseJsonConfig(String &json_buffer) {
         }
     }
 
-    simulation_running = true; // Запускаємо обмін зі сканером після отримання конфігу
     Serial.println("Configuration loaded from JSON.");
+    updateDisplay();
     notifyClients();
 }
 
@@ -713,7 +651,6 @@ void saveWifi(String ssid, String pass) {
     preferences.begin("obd-config", false);
     preferences.putString("wifi_ssid", ssid);
     preferences.putString("wifi_pass", pass);
-    preferences.putBool("configSaved", true); // Також встановлюємо прапорець, що конфігурація існує
     preferences.end();
     Serial.println("WiFi settings saved to NVS.");
 }
@@ -773,7 +710,7 @@ void saveConfig() {
 
     // --- TCM Data (ecus[1]) ---
     preferences.putInt("gear", ecus[1].current_gear);
-
+    
     preferences.putBool("configSaved", true); // Magic key to indicate that config exists
     preferences.end();
     Serial.println("Configuration saved to NVS.");
@@ -782,13 +719,8 @@ void saveConfig() {
 void loadConfig() {
     preferences.begin("obd-config", true); // Read-only mode
     
-    // --- WiFi ---
-    // Завантажуємо налаштування Wi-Fi в першу чергу, незалежно від іншого конфігу.
-    wifi_ssid = preferences.getString("wifi_ssid", "");
-    wifi_password = preferences.getString("wifi_pass", "");
-
     if (!preferences.getBool("configSaved", false)) {
-        Serial.println("No full configuration found in NVS. Using defaults for other settings.");
+        Serial.println("No saved configuration found in NVS. Using defaults.");
         preferences.end();
         return;
     }
@@ -804,6 +736,10 @@ void loadConfig() {
     canBitrate = preferences.getInt("bitrate", 500000);
     frame_delay_ms = preferences.getInt("fDelay", 0);
     error_injection_rate = preferences.getInt("errRate", 0);
+
+    // --- WiFi ---
+    wifi_ssid = preferences.getString("wifi_ssid", "");
+    wifi_password = preferences.getString("wifi_pass", "");
 
     // --- ECM Data (ecus[0]) ---
     strncpy(ecus[0].vin, preferences.getString("vin", "NVS_VIN_ECM").c_str(), 17);

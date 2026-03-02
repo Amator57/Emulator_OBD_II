@@ -58,16 +58,25 @@ const char index_html[] PROGMEM = R"rawliteral(
             <button class="tab-button" onclick="showPage('page-pids20', this)">PIDs 20-3F</button>
             <button class="tab-button" onclick="showPage('page-pids40', this)">PIDs 40-5F</button>
             <button class="tab-button" onclick="showPage('page-pids60', this)">PIDs 60-7F</button>
+            <button class="tab-button" onclick="showPage('page-mode02', this)">Mode 02 FF</button>
+            <button class="tab-button" onclick="showPage('page-mode03', this)">Mode 03/07/0A</button>
+            <button class="tab-button" onclick="showPage('page-mode04', this)">Mode 04</button>
+            <button class="tab-button" onclick="showPage('page-mode05', this)">Mode 05</button>
             <button class="tab-button" onclick="showPage('page-mode06', this)">Mode 06</button>
+            <button class="tab-button" onclick="showPage('page-mode08', this)">Mode 08</button>
+            <button class="tab-button" onclick="showPage('page-mode09', this)">Mode 09</button>
             <button class="tab-button" onclick="showPage('page-tcm', this)">TCM</button>
+            <button class="tab-button" onclick="showPage('page-abs', this)">ABS</button>
+            <button class="tab-button" onclick="showPage('page-srs', this)">SRS</button>
             <button class="tab-button" onclick="showPage('page-live', this)">Live Data</button>
             <button class="tab-button" onclick="showPage('page-faults', this)">Fault Injection</button>
             <button class="tab-button" onclick="showPage('page-can', this)">CAN Monitor</button>
+            <button class="tab-button" onclick="showPage('page-network', this)">Network</button>
         </nav>
 
         <form id="updateForm" action="/update" method="get">
             <div id="page-general" class="page-content">
-                <h2>General Settings & DTC</h2>
+                <h2>General Settings</h2>
                 <div style="margin-bottom: 15px; padding: 10px; background-color: #e3f2fd; border-radius: 8px; border: 1px solid #90caf9;">
                     <label style="display: flex; align-items: center;">
                         <label class="switch">
@@ -97,7 +106,7 @@ const char index_html[] PROGMEM = R"rawliteral(
                 </div>
                 
                 <h3>ECU Control</h3>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 10px; margin-bottom: 15px;">
                     <label style="display: flex; align-items: center;">
                         <label class="switch">
                             <input type="checkbox" id="ecu0_en" name="ecu0_en" checked>
@@ -112,30 +121,24 @@ const char index_html[] PROGMEM = R"rawliteral(
                         </label>
                         <span>Enable TCM (Trans)</span>
                     </label>
+                    <label style="display: flex; align-items: center;">
+                        <label class="switch">
+                            <input type="checkbox" id="ecu2_en" name="ecu2_en" checked>
+                            <span class="slider"></span>
+                        </label>
+                        <span>Enable ABS</span>
+                    </label>
+                    <label style="display: flex; align-items: center;">
+                        <label class="switch">
+                            <input type="checkbox" id="ecu3_en" name="ecu3_en" checked>
+                            <span class="slider"></span>
+                        </label>
+                        <span>Enable SRS</span>
+                    </label>
                 </div>
 
-                <label for="vin">VIN (PID 09 02):</label>
-                <input type="text" id="vin" name="vin" value="VIN_NOT_SET" maxlength="17">
-
-                <label for="cal_id">Calibration ID (PID 09 04):</label>
-                <input type="text" id="cal_id" name="cal_id" value="EMULATOR_CAL_ID" maxlength="16">
-
-                <label for="cvn">CVN (PID 09 06):</label>
-                <input type="text" id="cvn" name="cvn" value="A1B2C3D4" maxlength="8">
-
-                <label for="dtc_list">DTCs (comma-separated, e.g., P0123,C0456):</label>
-                <input type="text" id="dtc_list" name="dtc_list" placeholder="P0101,C0300,B1000">
-
-                <label for="voltage">Battery Voltage (V):</label>
-                <input type="number" id="voltage" name="voltage" step="0.1" value="14.2" oninput="document.getElementById('voltage_pid').value = this.value">
-
-                <label for="dist_mil">Distance with MIL (km) (PID 0x31):</label>
-                <span class="formula">Formula: A*256 + B</span>
-                <input type="number" id="dist_mil" name="dist_mil" value="0" min="0">
-
                 <input type="submit" id="submitBtn" value="Update Emulator Data">
-                <button type="button" class="button-blue" onclick="updateAndShow(0)">Update Display</button>
-                <button type="button" id="clearDtcBtn" class="button-red">Clear All DTCs</button>
+                <button type="button" class="button-blue" onclick="updateAndShow(0)">Apply Changes</button>
                 <button type="button" id="cycleBtn" class="button-blue">Simulate Driving Cycle</button>
                 <div id="status" style="margin-top: 15px; font-weight: bold; text-align: center; min-height: 1.2em;"></div>
 
@@ -203,7 +206,7 @@ const char index_html[] PROGMEM = R"rawliteral(
                 <label for="timing">Timing Advance (deg) (PID 0x0E):</label>
                 <span class="formula">Formula: (A-128)/2</span>
                 <input type="number" id="timing" name="timing" step="0.5" value="5.0">
-                <button type="button" class="button-blue" onclick="updateAndShow(1)">Update Display</button>
+                <button type="button" class="button-blue" onclick="updateAndShow(1)">Apply Changes</button>
             </div>
 
             <div id="page-pids20" class="page-content">
@@ -211,24 +214,106 @@ const char index_html[] PROGMEM = R"rawliteral(
                 <label for="fuel">Fuel Level (%) (PID 0x2F):</label>
                 <span class="formula">Formula: A * 100/255</span>
                 <input type="number" id="fuel" name="fuel" step="0.1" value="75.0" min="0" max="100">
-                <button type="button" class="button-blue" onclick="updateAndShow(1)">Update Display</button>
+
+                <label for="dist_since_clear">Dist. Since Codes Cleared (km) (PID 0x31):</label>
+                <span class="formula">Formula: A*256 + B</span>
+                <input type="number" id="dist_since_clear" name="dist_since_clear" value="0" min="0">
+
+                <label for="dist_mil_on">Dist. Traveled MIL On (km) (PID 0x21):</label>
+                <span class="formula">Formula: A*256 + B</span>
+                <input type="number" id="dist_mil_on" name="dist_mil_on" value="0" min="0">
+
+                <label for="evap">Evap Purge (%) (PID 0x2E):</label>
+                <span class="formula">Formula: A * 100/255</span>
+                <input type="number" id="evap" name="evap" step="0.1" value="0.0">
+
+                <label for="warm_ups">Warm-ups Since Cleared (PID 0x30):</label>
+                <span class="formula">Formula: A</span>
+                <input type="number" id="warm_ups" name="warm_ups" value="10">
+
+                <label for="baro">Barometric Pressure (kPa) (PID 0x33):</label>
+                <span class="formula">Formula: A</span>
+                <input type="number" id="baro" name="baro" value="100">
+                <button type="button" class="button-blue" onclick="updateAndShow(1)">Apply Changes</button>
             </div>
 
             <div id="page-pids40" class="page-content">
                 <h2>Mode 01 PIDs [40-5F]</h2>
                 <label for="voltage_pid">Control Module Voltage (V) (PID 0x42):</label>
                 <span class="formula">Formula: (A*256+B)/1000</span>
-                <input type="number" id="voltage_pid" name="voltage" step="0.1" value="14.2" oninput="document.getElementById('voltage').value = this.value">
+                <input type="number" id="voltage_pid" name="voltage" step="0.1" value="14.2">
 
                 <label for="fuel_rate">Engine Fuel Rate (L/h) (PID 0x5E):</label>
                 <span class="formula">Formula: ((A*256)+B)/20</span>
                 <input type="number" id="fuel_rate" name="fuel_rate" step="0.1" value="1.5">
-                <button type="button" class="button-blue" onclick="updateAndShow(1)">Update Display</button>
+
+                <label for="abs_load">Absolute Load (%) (PID 0x43):</label>
+                <span class="formula">Formula: (A*256+B)*100/255</span>
+                <input type="number" id="abs_load" name="abs_load" step="0.1" value="20.0">
+
+                <label for="lambda">Commanded Equivalence Ratio (PID 0x44):</label>
+                <span class="formula">Formula: (A*256+B)/32768</span>
+                <input type="number" id="lambda" name="lambda" step="0.01" value="1.00">
+
+                <label for="rel_tps">Relative Throttle Pos (%) (PID 0x45):</label>
+                <span class="formula">Formula: A*100/255</span>
+                <input type="number" id="rel_tps" name="rel_tps" step="0.1" value="10.0">
+
+                <label for="amb_temp">Ambient Air Temp (C) (PID 0x46):</label>
+                <span class="formula">Formula: A-40</span>
+                <input type="number" id="amb_temp" name="amb_temp" value="20">
+
+                <label for="oil_temp">Engine Oil Temp (C) (PID 0x5C):</label>
+                <span class="formula">Formula: A-40</span>
+                <input type="number" id="oil_temp" name="oil_temp" value="85">
+                <button type="button" class="button-blue" onclick="updateAndShow(1)">Apply Changes</button>
             </div>
 
             <div id="page-pids60" class="page-content">
                 <h2>Mode 01 PIDs [60-7F]</h2>
                 <p>Наразі в цьому діапазоні немає параметрів, що налаштовуються.</p>
+            </div>
+
+            <div id="page-mode02" class="page-content">
+                <h2>Mode 02 - Freeze Frame</h2>
+                <p>Configure the data returned in Mode 02. These values are usually captured when a DTC occurs.</p>
+                
+                <label for="ff_rpm">Freeze Frame RPM:</label>
+                <input type="number" id="ff_rpm" name="ff_rpm" value="0">
+
+                <label for="ff_speed">Freeze Frame Speed (km/h):</label>
+                <input type="number" id="ff_speed" name="ff_speed" value="0">
+
+                <label for="ff_temp">Freeze Frame Temp (C):</label>
+                <input type="number" id="ff_temp" name="ff_temp" value="0">
+
+                <label for="ff_maf">Freeze Frame MAF (g/s):</label>
+                <input type="number" id="ff_maf" name="ff_maf" step="0.1" value="0.0">
+
+                <label for="ff_pres">Freeze Frame Fuel Pressure (kPa):</label>
+                <input type="number" id="ff_pres" name="ff_pres" value="0">
+
+                <button type="button" class="button-blue" onclick="updateAndShow(5)">Apply Changes</button>
+            </div>
+
+            <div id="page-mode03" class="page-content">
+                <h2>Mode 03 / 07 / 0A - DTCs</h2>
+                <label for="dtc_list">Inject DTCs (comma-separated, e.g., P0123,C0456):</label>
+                <input type="text" id="dtc_list" name="dtc_list" placeholder="P0101,C0300,B1000">
+                <p><i>Note: Adding a DTC here will populate Current (Mode 03), Pending (Mode 07), and Permanent (Mode 0A) lists.</i></p>
+                <button type="button" class="button-blue" onclick="updateAndShow(6)">Apply Changes</button>
+            </div>
+
+            <div id="page-mode04" class="page-content">
+                <h2>Mode 04 - Clear Diagnostic Information</h2>
+                <p>Pressing the button below will clear all DTCs and Freeze Frame data.</p>
+                <button type="button" id="clearDtcBtn" class="button-red">Clear All DTCs (Mode 04)</button>
+            </div>
+
+            <div id="page-mode05" class="page-content">
+                <h2>Mode 05 - O2 Sensor Monitoring</h2>
+                <p>Mode 05 is not supported in CAN OBD-II (replaced by Mode 06).</p>
+                <button type="button" class="button-blue" onclick="updateAndShow(8)">Apply Changes</button>
             </div>
 
             <div id="page-mode06" class="page-content">
@@ -245,7 +330,26 @@ const char index_html[] PROGMEM = R"rawliteral(
                     <input type="number" name="m06_t2_min" value="0">
                     <input type="number" name="m06_t2_max" value="65535">
                 </div>
-                <button type="button" class="button-blue" onclick="updateAndShow(2)">Update Display</button>
+                <button type="button" class="button-blue" onclick="updateAndShow(2)">Apply Changes</button>
+            </div>
+
+            <div id="page-mode08" class="page-content">
+                <h2>Mode 08 - On-Board Control</h2>
+                <p>Control of on-board system, test or component is not currently implemented.</p>
+            </div>
+
+            <div id="page-mode09" class="page-content">
+                <h2>Mode 09 - Vehicle Information</h2>
+                <label for="vin">VIN (PID 09 02):</label>
+                <input type="text" id="vin" name="vin" value="VIN_NOT_SET" maxlength="17">
+                <span class="formula">Note: Characters I, O, and Q are not allowed in VIN.</span>
+
+                <label for="cal_id">Calibration ID (PID 09 04):</label>
+                <input type="text" id="cal_id" name="cal_id" value="ECM_CAL_ID_V1" maxlength="16">
+
+                <label for="cvn">CVN (PID 09 06):</label>
+                <input type="text" id="cvn" name="cvn" value="ECE1E2E3" maxlength="8">
+                <button type="button" class="button-blue" onclick="updateAndShow(7)">Apply Changes</button>
             </div>
 
             <div id="page-tcm" class="page-content">
@@ -253,7 +357,24 @@ const char index_html[] PROGMEM = R"rawliteral(
                 <label for="tcm_gear">Current Gear (PID 0xA4 - Custom):</label>
                 <span class="formula">Value: 0=Neutral, 1-6=Gears, 255=Reverse</span>
                 <input type="number" id="tcm_gear" name="tcm_gear" value="1" min="0" max="255">
-                <button type="button" class="button-blue" onclick="updateAndShow(3)">Update Display</button>
+                <button type="button" class="button-blue" onclick="updateAndShow(3)">Apply Changes</button>
+            </div>
+
+            <div id="page-abs" class="page-content">
+                <h2>Anti-lock Braking System (ABS)</h2>
+                <label for="abs_speed">Wheel Speed (km/h) (PID 0x0D):</label>
+                <input type="number" id="abs_speed" name="abs_speed" value="60">
+                
+                <label for="abs_vin">VIN (PID 09 02):</label>
+                <input type="text" id="abs_vin" name="abs_vin" value="123EMULATORVINABS" maxlength="17">
+                <button type="button" class="button-blue" onclick="updateAndShow(9)">Apply Changes</button>
+            </div>
+
+            <div id="page-srs" class="page-content">
+                <h2>Supplemental Restraint System (SRS)</h2>
+                <label for="srs_vin">VIN (PID 09 02):</label>
+                <input type="text" id="srs_vin" name="srs_vin" value="123EMULATORVINSRS" maxlength="17">
+                <button type="button" class="button-blue" onclick="updateAndShow(10)">Apply Changes</button>
             </div>
 
             <div id="page-faults" class="page-content">
@@ -313,7 +434,7 @@ const char index_html[] PROGMEM = R"rawliteral(
                 </div>
                 
                 <h3>Quick Faults</h3>
-                <button type="button" class="button-blue" onclick="updateAndShow(4)">Update Display</button>
+                <button type="button" class="button-blue" onclick="updateAndShow(4)">Apply Changes</button>
                 <button type="button" class="button-red" onclick="injectRandomDTC()">Inject Random DTC</button>
             </div>
             
@@ -327,10 +448,24 @@ const char index_html[] PROGMEM = R"rawliteral(
                     <span>Enable CAN Logging (Real-time)</span>
                 </label>
                 <div id="can_log_area"></div>
-                <button type="button" class="button-blue" onclick="updateAndShow(4)">Update Display</button>
+                <button type="button" class="button-blue" onclick="updateAndShow(4)">Apply Changes</button>
                 <button type="button" onclick="document.getElementById('can_log_area').innerHTML = ''">Clear Log</button>
             </div>
         </form>
+
+        <div id="page-network" class="page-content">
+            <h2>Wi-Fi Configuration</h2>
+            <p>Configure the emulator to connect to your local Wi-Fi network. If connection fails, it will revert to Access Point mode.</p>
+            <form onsubmit="submitWifi(event)">
+                <label for="wifi_ssid">SSID (Network Name):</label>
+                <input type="text" id="wifi_ssid" name="ssid" placeholder="MyWiFiNetwork" required>
+                
+                <label for="wifi_pass">Password:</label>
+                <input type="text" id="wifi_pass" name="pass" placeholder="Password">
+                
+                <input type="submit" value="Save & Connect" class="button-blue">
+            </form>
+        </div>
 
         <div id="page-live" class="page-content">
             <div style="margin-top: 0;">
@@ -378,16 +513,16 @@ const char index_html[] PROGMEM = R"rawliteral(
                 <p><strong>Session:</strong> <span id="status_uds_session">Default</span></p>
                 <p><strong>Security Access:</strong> <span id="status_uds_security">Locked</span></p>
             </div>
-        </div>
 
-        <div id="freeze-frame-status" class="live-status" style="display: none; background-color: #fef9e7; border-color: #f1c40f; margin-top: 20px;">
-            <h2>Freeze Frame Data</h2>
-            <p><strong>Trigger DTC:</strong> <span id="status_ff_dtc">N/A</span></p>
-            <p><strong>RPM:</strong> <span id="status_ff_rpm">N/A</span></p>
-            <p><strong>Speed:</strong> <span id="status_ff_speed">N/A</span> km/h</p>
-            <p><strong>Temp:</strong> <span id="status_ff_temp">N/A</span> &deg;C</p>
-            <p><strong>MAF:</strong> <span id="status_ff_maf">N/A</span> g/s</p>
-            <p><strong>Fuel Pressure:</strong> <span id="status_ff_fuel_pressure">N/A</span> kPa</p>
+            <div id="freeze-frame-status" class="live-status" style="display: none; background-color: #fef9e7; border-color: #f1c40f; margin-top: 20px;">
+                <h2>Freeze Frame Data</h2>
+                <p><strong>Trigger DTC:</strong> <span id="status_ff_dtc">N/A</span></p>
+                <p><strong>RPM:</strong> <span id="status_ff_rpm">N/A</span></p>
+                <p><strong>Speed:</strong> <span id="status_ff_speed">N/A</span> km/h</p>
+                <p><strong>Temp:</strong> <span id="status_ff_temp">N/A</span> &deg;C</p>
+                <p><strong>MAF:</strong> <span id="status_ff_maf">N/A</span> g/s</p>
+                <p><strong>Fuel Pressure:</strong> <span id="status_ff_fuel_pressure">N/A</span> kPa</p>
+            </div>
         </div>
 
     </div>
@@ -410,27 +545,44 @@ const char index_html[] PROGMEM = R"rawliteral(
 
         function updateAndShow(pageIndex) {
             const form = document.getElementById('updateForm');
-            const formData = new FormData(form);
             const params = new URLSearchParams();
-            for (const pair of formData) {
-                if (pair[1]) {
-                    params.append(pair[0], pair[1]);
+            
+            // Знаходимо активну вкладку (div з display: block)
+            let activeDiv = null;
+            document.querySelectorAll('.page-content').forEach(div => {
+                if (div.style.display === 'block') {
+                    activeDiv = div;
                 }
+            });
+
+            if (activeDiv) {
+                // Збираємо дані тільки з полів активної вкладки
+                const inputs = activeDiv.querySelectorAll('input, select, textarea');
+                inputs.forEach(el => {
+                    if (el.name && !el.disabled) {
+                        if (el.type === 'checkbox' || el.type === 'radio') {
+                            if (el.checked) params.append(el.name, el.value);
+                        } else {
+                            params.append(el.name, el.value);
+                        }
+                    }
+                });
             }
+
             params.append('page', pageIndex);
             
             const url = form.action + '?' + params.toString();
             const statusDiv = document.getElementById('status');
-            statusDiv.textContent = 'Updating Display...';
+            statusDiv.textContent = 'Applying changes...';
             
             fetch(url)
                 .then(response => response.text())
                 .then(data => {
-                    statusDiv.textContent = 'Display Updated';
+                    statusDiv.textContent = 'Changes Applied';
                     statusDiv.style.color = 'green';
                 })
                 .catch(error => {
-                    statusDiv.textContent = 'Error updating display';
+                    statusDiv.textContent = 'Error applying changes';
                     statusDiv.style.color = 'red';
                 })
                 .finally(() => {
@@ -609,6 +761,29 @@ const char index_html[] PROGMEM = R"rawliteral(
             reader.readAsText(file);
         });
 
+        function submitWifi(e) {
+            e.preventDefault();
+            if(!confirm("Device will restart and try to connect to the new network. Continue?")) return;
+            
+            const ssid = document.getElementById('wifi_ssid').value;
+            const pass = document.getElementById('wifi_pass').value;
+            const formData = new FormData();
+            formData.append("ssid", ssid);
+            formData.append("pass", pass);
+
+            fetch('/save_wifi', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.text())
+            .then(data => {
+                alert(data);
+            })
+            .catch(error => {
+                alert("Error saving WiFi settings");
+            });
+        }
+
         let gateway = `ws://${window.location.hostname}/ws`;
         let websocket;
 
@@ -626,7 +801,7 @@ const char index_html[] PROGMEM = R"rawliteral(
         const chartSettings = ['chart_max_rpm', 'chart_max_speed', 'chart_max_temp', 'chart_max_maf', 'chart_max_timing', 'chart_max_fuel'];
         chartSettings.forEach(id => {
             if(localStorage.getItem(id)) document.getElementById(id).value = localStorage.getItem(id);
-            document.getElementById(id).addEventListener('change', updateChartSettings);
+            document.getElementById(id).addEventListener('input', updateChartSettings);
         });
 
         function updateChartSettings() {
@@ -797,10 +972,23 @@ const char index_html[] PROGMEM = R"rawliteral(
             document.getElementById('fuel_pressure').value = data.fuel_pressure;
             document.getElementById('fuel_rate').value = Number(data.fuel_rate).toFixed(1);
             document.getElementById('fuel').value = Number(data.fuel).toFixed(1);
-            document.getElementById('dist_mil').value = data.dist_mil;
-            document.getElementById('voltage').value = Number(data.voltage).toFixed(1);
+            document.getElementById('dist_since_clear').value = data.dist_mil;
+            document.getElementById('dist_mil_on').value = data.dist_mil_on;
+            document.getElementById('evap').value = Number(data.evap).toFixed(1);
+            document.getElementById('warm_ups').value = data.warm_ups;
+            document.getElementById('baro').value = data.baro;
+            document.getElementById('abs_load').value = Number(data.abs_load).toFixed(1);
+            document.getElementById('lambda').value = Number(data.lambda).toFixed(2);
+            document.getElementById('rel_tps').value = Number(data.rel_tps).toFixed(1);
+            document.getElementById('amb_temp').value = data.amb_temp;
+            document.getElementById('oil_temp').value = data.oil_temp;
             document.getElementById('voltage_pid').value = Number(data.voltage).toFixed(1);
             document.getElementById('dtc_list').value = data.dtcs.join(',');
+
+            // ABS & SRS
+            if(data.abs_speed !== undefined) document.getElementById('abs_speed').value = data.abs_speed;
+            if(data.abs_vin !== undefined) document.getElementById('abs_vin').value = data.abs_vin;
+            if(data.srs_vin !== undefined) document.getElementById('srs_vin').value = data.srs_vin;
             
             // Faults
             document.getElementById('frame_delay').value = data.frame_delay || 0;
@@ -816,6 +1004,8 @@ const char index_html[] PROGMEM = R"rawliteral(
             
             document.getElementById('ecu0_en').checked = data.ecu0_en;
             document.getElementById('ecu1_en').checked = data.ecu1_en;
+            document.getElementById('ecu2_en').checked = data.ecu2_en;
+            document.getElementById('ecu3_en').checked = data.ecu3_en;
             document.getElementById('can_log').checked = data.can_log;
 
             // Оновлення графіку

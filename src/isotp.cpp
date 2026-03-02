@@ -149,6 +149,7 @@ void isotp_poll() {
         if (!fault_stmin_overflow) {
             if (isoTpLink.txStMin <= 0x7F) { // 0-127 ms
                 delay_needed = isoTpLink.txStMin;
+                if (delay_needed < 20) delay_needed = 20; // Збільшено до 20мс для гарантованої стабільності
             } else if (isoTpLink.txStMin >= 0xF1 && isoTpLink.txStMin <= 0xF9) { // 100-900 us
                 delay_needed = 1; // Treat as 1ms for simplicity in a non-realtime system
             }
@@ -178,7 +179,7 @@ void isotp_poll() {
             
             // Pad unused bytes
             for (int i = 1 + chunk; i < 8; i++) {
-                frame_data[i] = 0xAA; // Common padding value
+                frame_data[i] = 0x00; // Padding 0x00 (більш сумісний)
             }
 
             isotp_send_can(isoTpLink.txId, frame_data, 8, isoTpLink.txExtended);
@@ -222,9 +223,9 @@ bool isotp_send(uint32_t id, const uint8_t* data, uint16_t len, bool extended) {
         // Single Frame (SF)
         uint8_t frame_data[8] = {0};
         frame_data[0] = len;
-        memcpy(&frame_data[1], data, len);
+        memcpy(&frame_data[1], isoTpLink.txBuffer, len);
         // Pad with a common value
-        for (int i = 1 + len; i < 8; i++) frame_data[i] = 0xAA;
+        for (int i = 1 + len; i < 8; i++) frame_data[i] = 0x00; // Padding 0x00
         
         isotp_send_can(id, frame_data, 8, extended);
         // No state change needed, txState is already IDLE
@@ -233,7 +234,7 @@ bool isotp_send(uint32_t id, const uint8_t* data, uint16_t len, bool extended) {
         uint8_t frame_data[8];
         frame_data[0] = 0x10 | ((len >> 8) & 0x0F);
         frame_data[1] = len & 0xFF;
-        memcpy(&frame_data[2], data, 6);
+        memcpy(&frame_data[2], isoTpLink.txBuffer, 6);
         
         isotp_send_can(id, frame_data, 8, extended);
         

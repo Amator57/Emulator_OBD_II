@@ -8,7 +8,7 @@ void sendCurrentData(ECU &ecu, byte pid, bool use29bit);
 void sendFreezeFrameData(ECU &ecu, byte pid, bool use29bit);
 void sendDTCs(ECU &ecu, bool use29bit);
 void sendPendingDTCs(ECU &ecu, bool use29bit);
-void clearDTCs(ECU &ecu, bool use29bit);
+void clearDTCs(ECU &ecu, bool use29bit, bool sendResponse);
 void sendMode06Data(ECU &ecu, byte pid, bool use29bit);
 void sendSupportedPids_09(ECU &ecu, byte pid, bool use29bit);
 void sendVIN(ECU &ecu, byte pid, bool use29bit);
@@ -38,9 +38,9 @@ void handleOBDRequest(uint32_t id, const uint8_t* data, uint16_t len) {
     // Filter based on Mode
     // (Filtering already done mostly by main loop, but good to keep)
 
-    if (len < 2) return;
+    if (len < 1) return; // Дозволяємо запити довжиною 1 байт (наприклад, Mode 03)
     byte service = data[0]; // ISO-TP payload starts at 0
-    byte pid = data[1];
+    byte pid = (len >= 2) ? data[1] : 0; // PID зчитуємо тільки якщо він є
     
     // Determine target ECU
     int targetEcuIndex = -1;
@@ -57,6 +57,8 @@ void handleOBDRequest(uint32_t id, const uint8_t* data, uint16_t len) {
             byte ta = (id >> 8) & 0xFF;
             if (ta == 0x10) targetEcuIndex = 0;
             else if (ta == 0x18) targetEcuIndex = 1;
+            else if (ta == 0x28) targetEcuIndex = 2; // ABS
+            else if (ta == 0x58) targetEcuIndex = 3; // SRS
         }
     }
 
@@ -77,7 +79,7 @@ void handleOBDRequest(uint32_t id, const uint8_t* data, uint16_t len) {
                 case 0x01: sendCurrentData(ecus[i], pid, is29Bit); break;
                 case 0x02: sendFreezeFrameData(ecus[i], pid, is29Bit); break;
                 case 0x03: sendDTCs(ecus[i], is29Bit); break;
-                case 0x04: clearDTCs(ecus[i], is29Bit); break;
+                case 0x04: clearDTCs(ecus[i], is29Bit, true); break; // Відповідаємо, бо це запит сканера
                 case 0x05: 
                     // Mode 05 is not supported in CAN OBD-II (replaced by Mode 06)
                     sendNegativeResponse(service, 0x11, is29Bit); // Service Not Supported
@@ -208,6 +210,12 @@ void sendCurrentData(ECU &ecu, byte pid, bool use29bit) {
             len += 2;
             break;
         }
+        case 0x1F: { // Run Time Since Engine Start
+            uint16_t seconds = millis() / 1000;
+            data[2] = highByte(seconds); data[3] = lowByte(seconds);
+            len += 2;
+            break;
+        }
         case 0x20: {
             data[2] = (ecu.supported_pids_21_40 >> 24) & 0xFF;
             data[3] = (ecu.supported_pids_21_40 >> 16) & 0xFF;
@@ -216,8 +224,24 @@ void sendCurrentData(ECU &ecu, byte pid, bool use29bit) {
             len += 4;
             break;
         }
+        case 0x21: { // Distance Traveled with MIL On
+            uint16_t val = ecu.distance_mil_on;
+            data[2] = highByte(val); data[3] = lowByte(val);
+            len += 2;
+            break;
+        }
+        case 0x2E: { // Commanded Evaporative Purge
+            data[2] = (byte)((ecu.evap_purge * 255.0) / 100.0);
+            len += 1;
+            break;
+        }
         case 0x2F: { // Fuel Level
             data[2] = (byte)((ecu.fuel_level * 255.0) / 100.0);
+            len += 1;
+            break;
+        }
+        case 0x30: { // Warm-ups since codes cleared
+            data[2] = (byte)ecu.warm_ups;
             len += 1;
             break;
         }
@@ -225,6 +249,11 @@ void sendCurrentData(ECU &ecu, byte pid, bool use29bit) {
             data[2] = highByte(ecu.distance_with_mil);
             data[3] = lowByte(ecu.distance_with_mil);
             len += 2;
+            break;
+        }
+        case 0x33: { // Barometric Pressure
+            data[2] = (byte)ecu.baro_pressure;
+            len += 1;
             break;
         }
         case 0x40: {
@@ -239,6 +268,33 @@ void sendCurrentData(ECU &ecu, byte pid, bool use29bit) {
             int val = ecu.battery_voltage * 1000;
             data[2] = highByte(val); data[3] = lowByte(val);
             len += 2;
+            break;
+        }
+        case 0x43: { // Absolute Load Value
+            uint16_t val = (uint16_t)((ecu.abs_load * 255.0) / 100.0);
+            data[2] = highByte(val); data[3] = lowByte(val);
+            len += 2;
+            break;
+        }
+        case 0x44: { // Commanded Equivalence Ratio (Lambda)
+            uint16_t val = (uint16_t)(ecu.command_equiv_ratio * 32768.0);
+            data[2] = highByte(val); data[3] = lowByte(val);
+            len += 2;
+            break;
+        }
+        case 0x45: { // Relative Throttle Position
+            data[2] = (byte)((ecu.relative_throttle * 255.0) / 100.0);
+            len += 1;
+            break;
+        }
+        case 0x46: { // Ambient Air Temperature
+            data[2] = (byte)(ecu.ambient_temp + 40);
+            len += 1;
+            break;
+        }
+        case 0x5C: { // Engine Oil Temperature
+            data[2] = (byte)(ecu.oil_temp + 40);
+            len += 1;
             break;
         }
         case 0x5E: { // Fuel Rate
@@ -275,7 +331,8 @@ void sendFreezeFrameData(ECU &ecu, byte pid, bool use29bit) {
 
     switch(pid) {
         case 0x02: {
-            uint16_t code = atoi(&ecu.dtcs[0][1]);
+            // Використовуємо strtol з базою 16 для коректного парсингу HEX-частини коду DTC
+            uint16_t code = strtol(&ecu.dtcs[0][1], NULL, 16);
             if (ecu.dtcs[0][0] == 'C') code |= 0x4000;
             else if (ecu.dtcs[0][0] == 'B') code |= 0x8000;
             else if (ecu.dtcs[0][0] == 'U') code |= 0xC000;
@@ -300,7 +357,8 @@ void sendDTCs(ECU &ecu, bool use29bit) {
     byte dtc_bytes[10];
     int byte_count = 0;
     for(int i=0; i<ecu.num_dtcs && i < 5; i++) {
-        uint16_t code = atoi(&ecu.dtcs[i][1]);
+        // Використовуємо strtol з базою 16 для коректного парсингу HEX-частини коду DTC
+        uint16_t code = strtol(&ecu.dtcs[i][1], NULL, 16);
         if (ecu.dtcs[i][0] == 'C') code |= 0x4000;
         else if (ecu.dtcs[i][0] == 'B') code |= 0x8000;
         else if (ecu.dtcs[i][0] == 'U') code |= 0xC000;
@@ -310,7 +368,7 @@ void sendDTCs(ECU &ecu, bool use29bit) {
 
     uint8_t data[20];
     data[0] = 0x43;
-    data[1] = ecu.num_dtcs;
+    data[1] = ecu.num_dtcs; // Повертаємо лічильник DTC, бо сканер його очікує
     memcpy(&data[2], dtc_bytes, byte_count);
     
     isotp_send(use29bit ? ecu.canId29 : ecu.canId, data, 2 + byte_count, use29bit);
@@ -323,7 +381,8 @@ void sendPendingDTCs(ECU &ecu, bool use29bit) {
     byte dtc_bytes[10];
     int byte_count = 0;
     for(int i=0; i<ecu.num_dtcs && i < 5; i++) {
-        uint16_t code = atoi(&ecu.dtcs[i][1]);
+        // Використовуємо strtol з базою 16 для коректного парсингу HEX-частини коду DTC
+        uint16_t code = strtol(&ecu.dtcs[i][1], NULL, 16);
         if (ecu.dtcs[i][0] == 'C') code |= 0x4000;
         else if (ecu.dtcs[i][0] == 'B') code |= 0x8000;
         else if (ecu.dtcs[i][0] == 'U') code |= 0xC000;
@@ -333,20 +392,28 @@ void sendPendingDTCs(ECU &ecu, bool use29bit) {
 
     uint8_t data[20];
     data[0] = 0x47;
-    data[1] = ecu.num_dtcs;
+    data[1] = ecu.num_dtcs; // Повертаємо лічильник DTC
     memcpy(&data[2], dtc_bytes, byte_count);
     
     isotp_send(use29bit ? ecu.canId29 : ecu.canId, data, 2 + byte_count, use29bit);
 }
 
-void clearDTCs(ECU &ecu, bool use29bit) {
+void clearDTCs(ECU &ecu, bool use29bit, bool sendResponse) {
     ecu.num_dtcs = 0;
     for(int i=0; i<5; i++) ecu.dtcs[i][0] = '\0';
     ecu.freezeFrameSet = false;
     ecu.distance_with_mil = 0;
 
-    uint8_t data[1] = {0x44};
-    isotp_send(use29bit ? ecu.canId29 : ecu.canId, data, 1, use29bit);
+    // Також очищуємо постійні DTC (Mode 0A) та скидаємо лічильник циклів водіння,
+    // щоб поведінка відповідала очікуванням.
+    ecu.num_permanent_dtcs = 0;
+    for(int i=0; i<5; i++) ecu.permanent_dtcs[i][0] = '\0';
+    ecu.error_free_cycles = 0;
+
+    if (sendResponse) {
+        uint8_t data[1] = {0x44};
+        isotp_send(use29bit ? ecu.canId29 : ecu.canId, data, 1, use29bit);
+    }
     
     updateDisplay();
     notifyClients();
@@ -394,21 +461,23 @@ void sendSupportedPids_09(ECU &ecu, byte pid, bool use29bit) {
 void sendVIN(ECU &ecu, byte pid, bool use29bit) {
     if (frame_delay_ms > 0) delay(frame_delay_ms);
 
-    uint8_t data[20];
+    uint8_t data[22];
     data[0] = 0x49; data[1] = pid;
-    memcpy(&data[2], ecu.vin, 17);
+    data[2] = 0x01; // Number of data items (1 VIN)
+    memcpy(&data[3], ecu.vin, 17);
     // ISO-TP stack handles segmentation automatically
-    isotp_send(use29bit ? ecu.canId29 : ecu.canId, data, 19, use29bit);
+    isotp_send(use29bit ? ecu.canId29 : ecu.canId, data, 20, use29bit);
 }
 
 void sendCalId(ECU &ecu, byte pid, bool use29bit) {
     if (frame_delay_ms > 0) delay(frame_delay_ms);
 
-    uint8_t data[20];
+    uint8_t data[22];
     data[0] = 0x49; data[1] = pid;
+    data[2] = 0x01; // Number of data items (1 CAL ID)
     int len = strlen(ecu.cal_id);
-    memcpy(&data[2], ecu.cal_id, len);
-    isotp_send(use29bit ? ecu.canId29 : ecu.canId, data, 2 + len, use29bit);
+    memcpy(&data[3], ecu.cal_id, len);
+    isotp_send(use29bit ? ecu.canId29 : ecu.canId, data, 3 + len, use29bit);
 }
 
 void sendCvn(ECU &ecu, byte pid, bool use29bit) {
@@ -416,12 +485,13 @@ void sendCvn(ECU &ecu, byte pid, bool use29bit) {
 
     uint8_t data[8];
     data[0] = 0x49; data[1] = pid;
+    data[2] = 0x01; // Number of data items (1 CVN)
     long cvn_val = strtol(ecu.cvn, NULL, 16);
-    data[2] = (cvn_val >> 24) & 0xFF;
-    data[3] = (cvn_val >> 16) & 0xFF;
-    data[4] = (cvn_val >> 8) & 0xFF;
-    data[5] = cvn_val & 0xFF;
-    isotp_send(use29bit ? ecu.canId29 : ecu.canId, data, 6, use29bit);
+    data[3] = (cvn_val >> 24) & 0xFF;
+    data[4] = (cvn_val >> 16) & 0xFF;
+    data[5] = (cvn_val >> 8) & 0xFF;
+    data[6] = cvn_val & 0xFF;
+    isotp_send(use29bit ? ecu.canId29 : ecu.canId, data, 7, use29bit);
 }
 
 void sendPermanentDTCs(ECU &ecu, bool use29bit) {
@@ -430,7 +500,8 @@ void sendPermanentDTCs(ECU &ecu, bool use29bit) {
     byte dtc_bytes[10];
     int byte_count = 0;
     for(int i=0; i<ecu.num_permanent_dtcs && i < 5; i++) {
-        uint16_t code = atoi(&ecu.permanent_dtcs[i][1]);
+        // Використовуємо strtol з базою 16 для коректного парсингу HEX-частини коду DTC
+        uint16_t code = strtol(&ecu.permanent_dtcs[i][1], NULL, 16);
         if (ecu.permanent_dtcs[i][0] == 'C') code |= 0x4000;
         else if (ecu.permanent_dtcs[i][0] == 'B') code |= 0x8000;
         else if (ecu.permanent_dtcs[i][0] == 'U') code |= 0xC000;
@@ -440,7 +511,7 @@ void sendPermanentDTCs(ECU &ecu, bool use29bit) {
 
     uint8_t data[20];
     data[0] = 0x4A;
-    data[1] = ecu.num_permanent_dtcs;
+    data[1] = ecu.num_permanent_dtcs; // Додаємо лічильник і сюди для узгодженості
     memcpy(&data[2], dtc_bytes, byte_count);
     
     isotp_send(use29bit ? ecu.canId29 : ecu.canId, data, 2 + byte_count, use29bit);
