@@ -51,7 +51,7 @@ void logCAN(const twai_message_t& frame, bool rx) {
 }
 
 String getJsonState() {
-    DynamicJsonDocument doc(2048);
+    DynamicJsonDocument doc(8192);
     doc["ram"] = ESP.getFreeHeap();
     doc["vin"] = ecus[0].vin;
     doc["cal_id"] = ecus[0].cal_id;
@@ -66,19 +66,44 @@ String getJsonState() {
     doc["iat"] = ecus[0].intake_temp;
     doc["stft"] = ecus[0].short_term_fuel_trim;
     doc["ltft"] = ecus[0].long_term_fuel_trim;
+    doc["stft2"] = ecus[0].short_term_fuel_trim_b2;
+    doc["ltft2"] = ecus[0].long_term_fuel_trim_b2;
     doc["o2"] = ecus[0].o2_voltage;
+    doc["obd_std"] = ecus[0].obd_standard;
+    doc["o2_sens"] = ecus[0].o2_sensors_present;
     doc["timing"] = ecus[0].timing_advance;
     doc["fuel_pressure"] = ecus[0].fuel_pressure;
     doc["fuel_rate"] = ecus[0].fuel_rate;
     doc["fuel"] = ecus[0].fuel_level;
     doc["voltage"] = ecus[0].battery_voltage;
+    doc["fuel_sys"] = ecus[0].fuel_system_status;
     doc["dist_mil_on"] = ecus[0].distance_mil_on;
     doc["evap"] = ecus[0].evap_purge;
+    doc["egr_cmd"] = ecus[0].commanded_egr;
+    doc["egr_err"] = ecus[0].egr_error;
+    doc["evap_vp"] = ecus[0].evap_vapor_pressure;
+    doc["evap_abs"] = ecus[0].abs_evap_pressure;
     doc["warm_ups"] = ecus[0].warm_ups;
     doc["baro"] = ecus[0].baro_pressure;
+    doc["fuel_rail_pres_rel"] = ecus[0].fuel_rail_pressure_relative;
+    doc["fuel_rail_pres_gauge"] = ecus[0].fuel_rail_pressure_gauge;
     doc["abs_load"] = ecus[0].abs_load;
+    doc["wb_b1s1_l"] = ecus[0].o2_lambda_b1s1; doc["wb_b1s1_c"] = ecus[0].o2_current_b1s1;
+    doc["wb_b1s2_l"] = ecus[0].o2_lambda_b1s2; doc["wb_b1s2_c"] = ecus[0].o2_current_b1s2;
+    doc["wb_b2s1_l"] = ecus[0].o2_lambda_b2s1; doc["wb_b2s1_c"] = ecus[0].o2_current_b2s1;
+    doc["wb_b2s2_l"] = ecus[0].o2_lambda_b2s2; doc["wb_b2s2_c"] = ecus[0].o2_current_b2s2;
+    doc["cat_b1s1"] = ecus[0].catalyst_temp_b1s1;
+    doc["cat_b2s1"] = ecus[0].catalyst_temp_b2s1;
+    doc["cat_b1s2"] = ecus[0].catalyst_temp_b1s2;
+    doc["cat_b2s2"] = ecus[0].catalyst_temp_b2s2;
     doc["lambda"] = ecus[0].command_equiv_ratio;
     doc["rel_tps"] = ecus[0].relative_throttle;
+    doc["cmd_throttle"] = ecus[0].commanded_throttle_actuator;
+    doc["rel_app"] = ecus[0].rel_accel_pedal_pos;
+    doc["app_d"] = ecus[0].accel_pedal_pos_d;
+    doc["app_e"] = ecus[0].accel_pedal_pos_e;
+    doc["time_mil"] = ecus[0].time_run_mil_on;
+    doc["time_clear"] = ecus[0].time_since_dtc_cleared;
     doc["amb_temp"] = ecus[0].ambient_temp;
     doc["oil_temp"] = ecus[0].oil_temp;
     doc["tcm_gear"] = ecus[1].current_gear;
@@ -86,6 +111,7 @@ String getJsonState() {
     doc["abs_vin"] = ecus[2].vin;
     doc["srs_vin"] = ecus[3].vin;
     doc["mode"] = (int)emulatorMode;
+    doc["dynamic_rpm"] = dynamic_rpm_enabled;
     doc["bitrate"] = canBitrate;
     doc["fault_seq"] = fault_incorrect_sequence;
     doc["fault_silent"] = fault_silent_mode;
@@ -135,7 +161,8 @@ void onWsEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventT
 
 void setupWebServer() {
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send(200, "text/html", index_html);
+    // Використовуємо send_P з приведенням типу та довжиною, щоб читати прямо з Flash без копіювання в RAM
+    request->send(200, "text/html", (const uint8_t*)index_html, strlen(index_html));
   });
 
   server.on("/update", HTTP_GET, [] (AsyncWebServerRequest *request) {
@@ -145,6 +172,7 @@ void setupWebServer() {
     if(request->hasParam("rpm")) ecus[0].engine_rpm = request->getParam("rpm")->value().toInt();
     if(request->hasParam("speed")) ecus[0].vehicle_speed = request->getParam("speed")->value().toInt();
     if(request->hasParam("temp")) ecus[0].engine_temp = request->getParam("temp")->value().toInt();
+    if(request->hasParam("fuel_sys")) ecus[0].fuel_system_status = request->getParam("fuel_sys")->value().toInt();
     if(request->hasParam("maf")) ecus[0].maf_rate = request->getParam("maf")->value().toFloat();
     if(request->hasParam("timing")) ecus[0].timing_advance = request->getParam("timing")->value().toFloat();
     if(request->hasParam("load")) ecus[0].engine_load = request->getParam("load")->value().toFloat();
@@ -153,7 +181,11 @@ void setupWebServer() {
     if(request->hasParam("iat")) ecus[0].intake_temp = request->getParam("iat")->value().toInt();
     if(request->hasParam("stft")) ecus[0].short_term_fuel_trim = request->getParam("stft")->value().toFloat();
     if(request->hasParam("ltft")) ecus[0].long_term_fuel_trim = request->getParam("ltft")->value().toFloat();
+    if(request->hasParam("stft2")) ecus[0].short_term_fuel_trim_b2 = request->getParam("stft2")->value().toFloat();
+    if(request->hasParam("ltft2")) ecus[0].long_term_fuel_trim_b2 = request->getParam("ltft2")->value().toFloat();
     if(request->hasParam("o2")) ecus[0].o2_voltage = request->getParam("o2")->value().toFloat();
+    if(request->hasParam("obd_std")) ecus[0].obd_standard = request->getParam("obd_std")->value().toInt();
+    if(request->hasParam("o2_sens")) ecus[0].o2_sensors_present = request->getParam("o2_sens")->value().toInt();
     if(request->hasParam("fuel_pressure")) ecus[0].fuel_pressure = request->getParam("fuel_pressure")->value().toInt();
     
     // PIDs 20-3F
@@ -162,7 +194,25 @@ void setupWebServer() {
     if(request->hasParam("dist_mil_on")) ecus[0].distance_mil_on = request->getParam("dist_mil_on")->value().toInt();
     if(request->hasParam("evap")) ecus[0].evap_purge = request->getParam("evap")->value().toFloat();
     if(request->hasParam("warm_ups")) ecus[0].warm_ups = request->getParam("warm_ups")->value().toInt();
+    if(request->hasParam("egr_cmd")) ecus[0].commanded_egr = request->getParam("egr_cmd")->value().toFloat();
+    if(request->hasParam("egr_err")) ecus[0].egr_error = request->getParam("egr_err")->value().toFloat();
+    if(request->hasParam("evap_vp")) ecus[0].evap_vapor_pressure = request->getParam("evap_vp")->value().toInt();
+    if(request->hasParam("evap_abs")) ecus[0].abs_evap_pressure = request->getParam("evap_abs")->value().toFloat();
     if(request->hasParam("baro")) ecus[0].baro_pressure = request->getParam("baro")->value().toInt();
+    if(request->hasParam("fuel_rail_pres_rel")) ecus[0].fuel_rail_pressure_relative = request->getParam("fuel_rail_pres_rel")->value().toInt();
+    if(request->hasParam("fuel_rail_pres_gauge")) ecus[0].fuel_rail_pressure_gauge = request->getParam("fuel_rail_pres_gauge")->value().toInt();
+    if(request->hasParam("wb_b1s1_l")) ecus[0].o2_lambda_b1s1 = request->getParam("wb_b1s1_l")->value().toFloat();
+    if(request->hasParam("wb_b1s1_c")) ecus[0].o2_current_b1s1 = request->getParam("wb_b1s1_c")->value().toFloat();
+    if(request->hasParam("wb_b1s2_l")) ecus[0].o2_lambda_b1s2 = request->getParam("wb_b1s2_l")->value().toFloat();
+    if(request->hasParam("wb_b1s2_c")) ecus[0].o2_current_b1s2 = request->getParam("wb_b1s2_c")->value().toFloat();
+    if(request->hasParam("wb_b2s1_l")) ecus[0].o2_lambda_b2s1 = request->getParam("wb_b2s1_l")->value().toFloat();
+    if(request->hasParam("wb_b2s1_c")) ecus[0].o2_current_b2s1 = request->getParam("wb_b2s1_c")->value().toFloat();
+    if(request->hasParam("wb_b2s2_l")) ecus[0].o2_lambda_b2s2 = request->getParam("wb_b2s2_l")->value().toFloat();
+    if(request->hasParam("wb_b2s2_c")) ecus[0].o2_current_b2s2 = request->getParam("wb_b2s2_c")->value().toFloat();
+    if(request->hasParam("cat_b1s1")) ecus[0].catalyst_temp_b1s1 = request->getParam("cat_b1s1")->value().toFloat();
+    if(request->hasParam("cat_b2s1")) ecus[0].catalyst_temp_b2s1 = request->getParam("cat_b2s1")->value().toFloat();
+    if(request->hasParam("cat_b1s2")) ecus[0].catalyst_temp_b1s2 = request->getParam("cat_b1s2")->value().toFloat();
+    if(request->hasParam("cat_b2s2")) ecus[0].catalyst_temp_b2s2 = request->getParam("cat_b2s2")->value().toFloat();
 
     // PIDs 40-5F
     if(request->hasParam("fuel_rate")) ecus[0].fuel_rate = request->getParam("fuel_rate")->value().toFloat();
@@ -170,6 +220,12 @@ void setupWebServer() {
     if(request->hasParam("abs_load")) ecus[0].abs_load = request->getParam("abs_load")->value().toFloat();
     if(request->hasParam("lambda")) ecus[0].command_equiv_ratio = request->getParam("lambda")->value().toFloat();
     if(request->hasParam("rel_tps")) ecus[0].relative_throttle = request->getParam("rel_tps")->value().toFloat();
+    if(request->hasParam("cmd_throttle")) ecus[0].commanded_throttle_actuator = request->getParam("cmd_throttle")->value().toFloat();
+    if(request->hasParam("rel_app")) ecus[0].rel_accel_pedal_pos = request->getParam("rel_app")->value().toFloat();
+    if(request->hasParam("app_d")) ecus[0].accel_pedal_pos_d = request->getParam("app_d")->value().toFloat();
+    if(request->hasParam("app_e")) ecus[0].accel_pedal_pos_e = request->getParam("app_e")->value().toFloat();
+    if(request->hasParam("time_mil")) ecus[0].time_run_mil_on = request->getParam("time_mil")->value().toInt();
+    if(request->hasParam("time_clear")) ecus[0].time_since_dtc_cleared = request->getParam("time_clear")->value().toInt();
     if(request->hasParam("amb_temp")) ecus[0].ambient_temp = request->getParam("amb_temp")->value().toInt();
     if(request->hasParam("oil_temp")) ecus[0].oil_temp = request->getParam("oil_temp")->value().toInt();
     

@@ -29,6 +29,8 @@ void setupEcus() {
     ecus[0].intake_temp = 30;
     ecus[0].short_term_fuel_trim = 0.0;
     ecus[0].long_term_fuel_trim = 2.5;
+    ecus[0].short_term_fuel_trim_b2 = 0.0;
+    ecus[0].long_term_fuel_trim_b2 = 2.5;
     ecus[0].o2_voltage = 0.45;
     ecus[0].o2_trim = 0.0;
     ecus[0].timing_advance = 5.0;
@@ -39,6 +41,7 @@ void setupEcus() {
     ecus[0].battery_voltage = 14.2;
     
     // Init New PIDs
+    ecus[0].fuel_system_status = 0x0200; // Closed Loop (Sys 1), Sys 2 unused
     ecus[0].distance_mil_on = 0;
     ecus[0].evap_purge = 0.0;
     ecus[0].warm_ups = 10;
@@ -48,16 +51,48 @@ void setupEcus() {
     ecus[0].relative_throttle = 10.0;
     ecus[0].ambient_temp = 20;
     ecus[0].oil_temp = 85;
+    
+    // New PIDs from this request
+    ecus[0].fuel_rail_pressure_relative = 300; // kPa
+    ecus[0].fuel_rail_pressure_gauge = 4000; // kPa
+    ecus[0].commanded_throttle_actuator = 15.0; // %
+
+    ecus[0].o2_lambda_b1s1 = 1.0; ecus[0].o2_current_b1s1 = 0.0;
+    ecus[0].o2_lambda_b1s2 = 1.0; ecus[0].o2_current_b1s2 = 0.0;
+    ecus[0].o2_lambda_b2s1 = 1.0; ecus[0].o2_current_b2s1 = 0.0;
+    ecus[0].o2_lambda_b2s2 = 1.0; ecus[0].o2_current_b2s2 = 0.0;
+
+    ecus[0].catalyst_temp_b1s1 = 400.0;
+    ecus[0].catalyst_temp_b2s1 = 400.0;
+    ecus[0].catalyst_temp_b1s2 = 350.0;
+    ecus[0].catalyst_temp_b2s2 = 350.0;
+
+    ecus[0].commanded_egr = 0.0;
+    ecus[0].egr_error = 0.0;
+    ecus[0].evap_vapor_pressure = 0;
+    ecus[0].abs_evap_pressure = 100.0;
+
+    ecus[0].rel_accel_pedal_pos = 0.0;
+    ecus[0].accel_pedal_pos_d = 15.0;
+    ecus[0].accel_pedal_pos_e = 15.0;
+
+    ecus[0].obd_standard = 1; // 1 = OBD-II as defined by the CARB
+    ecus[0].o2_sensors_present = 0x03; // Bank 1 Sensor 1 & 2 present
+    ecus[0].time_run_mil_on = 0;
+    ecus[0].time_since_dtc_cleared = 0;
 
     ecus[0].freezeFrameSet = false;
     ecus[0].error_free_cycles = 0;
 
-    ecus[0].supported_pids_01_20 = (1UL << (32 - 0x01)) | (1UL << (32 - 0x04)) | (1UL << (32 - 0x05)) | (1UL << (32 - 0x06)) | 
-                                   (1UL << (32 - 0x07)) | (1UL << (32 - 0x0A)) | (1UL << (32 - 0x0B)) | (1UL << (32 - 0x0C)) | 
+    ecus[0].supported_pids_01_20 = (1UL << (32 - 0x01)) | (1UL << (32 - 0x03)) | (1UL << (32 - 0x04)) | (1UL << (32 - 0x05)) | (1UL << (32 - 0x06)) | 
+                                   (1UL << (32 - 0x07)) | (1UL << (32 - 0x08)) | (1UL << (32 - 0x09)) | (1UL << (32 - 0x0A)) | (1UL << (32 - 0x0B)) | (1UL << (32 - 0x0C)) | 
                                    (1UL << (32 - 0x0D)) | (1UL << (32 - 0x0E)) | (1UL << (32 - 0x0F)) | (1UL << (32 - 0x10)) | 
-                                   (1UL << (32 - 0x11)) | (1UL << (32 - 0x14)) | (1UL << (32 - 0x1F)) | (1UL << (32 - 0x20));
-    ecus[0].supported_pids_21_40 = (1UL << (32 - (0x21 - 0x20))) | (1UL << (32 - (0x2E - 0x20))) | (1UL << (32 - (0x2F - 0x20))) | (1UL << (32 - (0x30 - 0x20))) | (1UL << (32 - (0x31 - 0x20))) | (1UL << (32 - (0x33 - 0x20))) | (1UL << (32 - (0x40 - 0x20)));
-    ecus[0].supported_pids_41_60 = (1UL << (32 - (0x42 - 0x40))) | (1UL << (32 - (0x43 - 0x40))) | (1UL << (32 - (0x44 - 0x40))) | (1UL << (32 - (0x45 - 0x40))) | (1UL << (32 - (0x46 - 0x40))) | (1UL << (32 - (0x5C - 0x40))) | (1UL << (32 - (0x5E - 0x40))) | (1UL << (32 - (0x60 - 0x40)));
+                                   (1UL << (32 - 0x11)) | (1UL << (32 - 0x14)) | (1UL << (32 - 0x1C)) | (1UL << (32 - 0x1D)) | (1UL << (32 - 0x1F)) | (1UL << (32 - 0x20));
+    ecus[0].supported_pids_21_40 = (1UL << (32 - (0x21 - 0x20))) | (1UL << (32 - (0x22 - 0x20))) | (1UL << (32 - (0x23 - 0x20))) | (1UL << (32 - (0x2C - 0x20))) | (1UL << (32 - (0x2D - 0x20))) | (1UL << (32 - (0x2E - 0x20))) | (1UL << (32 - (0x2F - 0x20))) | (1UL << (32 - (0x30 - 0x20))) | (1UL << (32 - (0x31 - 0x20))) | (1UL << (32 - (0x32 - 0x20))) | (1UL << (32 - (0x33 - 0x20))) | 
+                                   (1UL << (32 - (0x34 - 0x20))) | (1UL << (32 - (0x35 - 0x20))) | (1UL << (32 - (0x36 - 0x20))) | (1UL << (32 - (0x37 - 0x20))) | 
+                                   (1UL << (32 - (0x3C - 0x20))) | (1UL << (32 - (0x3D - 0x20))) | (1UL << (32 - (0x3E - 0x20))) | (1UL << (32 - (0x3F - 0x20))) | 
+                                   (1UL << (32 - (0x40 - 0x20)));
+    ecus[0].supported_pids_41_60 = (1UL << (32 - (0x42 - 0x40))) | (1UL << (32 - (0x43 - 0x40))) | (1UL << (32 - (0x44 - 0x40))) | (1UL << (32 - (0x45 - 0x40))) | (1UL << (32 - (0x46 - 0x40))) | (1UL << (32 - (0x49 - 0x40))) | (1UL << (32 - (0x4A - 0x40))) | (1UL << (32 - (0x4C - 0x40))) | (1UL << (32 - (0x4D - 0x40))) | (1UL << (32 - (0x4E - 0x40))) | (1UL << (32 - (0x53 - 0x40))) | (1UL << (32 - (0x5A - 0x40))) | (1UL << (32 - (0x5C - 0x40))) | (1UL << (32 - (0x5E - 0x40))) | (1UL << (32 - (0x60 - 0x40)));
     ecus[0].supported_pids_61_80 = 0;
     ecus[0].supported_pids_09 = (1UL << (32 - 0x02)) | (1UL << (32 - 0x04)) | (1UL << (32 - 0x06));
     

@@ -141,6 +141,12 @@ void sendCurrentData(ECU &ecu, byte pid, bool use29bit) {
             len += 4;
             break;
         }
+        case 0x03: { // Fuel System Status
+            data[2] = highByte(ecu.fuel_system_status);
+            data[3] = lowByte(ecu.fuel_system_status);
+            len += 2;
+            break;
+        }
         case 0x04: { // Engine Load
             data[2] = (byte)((ecu.engine_load * 255.0) / 100.0);
             len += 1;
@@ -158,6 +164,16 @@ void sendCurrentData(ECU &ecu, byte pid, bool use29bit) {
         }
         case 0x07: { // Long Term Fuel Trim
             data[2] = (byte)(((ecu.long_term_fuel_trim + 100.0) * 128.0) / 100.0);
+            len += 1;
+            break;
+        }
+        case 0x08: { // Short Term Fuel Trim Bank 2
+            data[2] = (byte)(((ecu.short_term_fuel_trim_b2 + 100.0) * 128.0) / 100.0);
+            len += 1;
+            break;
+        }
+        case 0x09: { // Long Term Fuel Trim Bank 2
+            data[2] = (byte)(((ecu.long_term_fuel_trim_b2 + 100.0) * 128.0) / 100.0);
             len += 1;
             break;
         }
@@ -210,6 +226,16 @@ void sendCurrentData(ECU &ecu, byte pid, bool use29bit) {
             len += 2;
             break;
         }
+        case 0x1C: { // OBD Standards
+            data[2] = ecu.obd_standard;
+            len += 1;
+            break;
+        }
+        case 0x1D: { // Oxygen Sensors Present
+            data[2] = ecu.o2_sensors_present;
+            len += 1;
+            break;
+        }
         case 0x1F: { // Run Time Since Engine Start
             uint16_t seconds = millis() / 1000;
             data[2] = highByte(seconds); data[3] = lowByte(seconds);
@@ -228,6 +254,28 @@ void sendCurrentData(ECU &ecu, byte pid, bool use29bit) {
             uint16_t val = ecu.distance_mil_on;
             data[2] = highByte(val); data[3] = lowByte(val);
             len += 2;
+            break;
+        }
+        case 0x22: { // Fuel Rail Pressure (relative)
+            uint16_t val = (uint16_t)(ecu.fuel_rail_pressure_relative / 0.079);
+            data[2] = highByte(val); data[3] = lowByte(val);
+            len += 2;
+            break;
+        }
+        case 0x23: { // Fuel Rail Gauge Pressure
+            uint16_t val = ecu.fuel_rail_pressure_gauge / 10;
+            data[2] = highByte(val); data[3] = lowByte(val);
+            len += 2;
+            break;
+        }
+        case 0x2C: { // Commanded EGR
+            data[2] = (byte)((ecu.commanded_egr * 255.0) / 100.0);
+            len += 1;
+            break;
+        }
+        case 0x2D: { // EGR Error
+            data[2] = (byte)(((ecu.egr_error + 100.0) * 128.0) / 100.0);
+            len += 1;
             break;
         }
         case 0x2E: { // Commanded Evaporative Purge
@@ -251,9 +299,71 @@ void sendCurrentData(ECU &ecu, byte pid, bool use29bit) {
             len += 2;
             break;
         }
+        case 0x32: { // EVAP System Vapor Pressure
+            int16_t val = ecu.evap_vapor_pressure * 4;
+            data[2] = highByte(val); data[3] = lowByte(val);
+            len += 2;
+            break;
+        }
         case 0x33: { // Barometric Pressure
             data[2] = (byte)ecu.baro_pressure;
             len += 1;
+            break;
+        }
+        case 0x34: { // O2 Wideband B1S1
+            uint16_t lambda = (uint16_t)(ecu.o2_lambda_b1s1 * 32768.0);
+            uint16_t current = (uint16_t)((ecu.o2_current_b1s1 + 128.0) * 256.0);
+            data[2] = highByte(lambda); data[3] = lowByte(lambda);
+            data[4] = highByte(current); data[5] = lowByte(current);
+            len += 4;
+            break;
+        }
+        case 0x35: { // O2 Wideband B1S2
+            uint16_t lambda = (uint16_t)(ecu.o2_lambda_b1s2 * 32768.0);
+            uint16_t current = (uint16_t)((ecu.o2_current_b1s2 + 128.0) * 256.0);
+            data[2] = highByte(lambda); data[3] = lowByte(lambda);
+            data[4] = highByte(current); data[5] = lowByte(current);
+            len += 4;
+            break;
+        }
+        case 0x36: { // O2 Wideband B2S1
+            uint16_t lambda = (uint16_t)(ecu.o2_lambda_b2s1 * 32768.0);
+            uint16_t current = (uint16_t)((ecu.o2_current_b2s1 + 128.0) * 256.0);
+            data[2] = highByte(lambda); data[3] = lowByte(lambda);
+            data[4] = highByte(current); data[5] = lowByte(current);
+            len += 4;
+            break;
+        }
+        case 0x37: { // O2 Wideband B2S2
+            uint16_t lambda = (uint16_t)(ecu.o2_lambda_b2s2 * 32768.0);
+            uint16_t current = (uint16_t)((ecu.o2_current_b2s2 + 128.0) * 256.0);
+            data[2] = highByte(lambda); data[3] = lowByte(lambda);
+            data[4] = highByte(current); data[5] = lowByte(current);
+            len += 4;
+            break;
+        }
+        case 0x3C: { // Catalyst Temp B1S1
+            uint16_t val = (uint16_t)((ecu.catalyst_temp_b1s1 + 40.0) * 10.0);
+            data[2] = highByte(val); data[3] = lowByte(val);
+            len += 2;
+            break;
+        }
+        case 0x3D: { // Catalyst Temp B2S1
+            uint16_t val = (uint16_t)((ecu.catalyst_temp_b2s1 + 40.0) * 10.0);
+            data[2] = highByte(val); data[3] = lowByte(val);
+            len += 2;
+            break;
+        }
+        case 0x3E: { // Catalyst Temp B1S2
+            uint16_t val = (uint16_t)((ecu.catalyst_temp_b1s2 + 40.0) * 10.0);
+            data[2] = highByte(val); data[3] = lowByte(val);
+            len += 2;
+            break;
+        }
+        case 0x3F: { // Catalyst Temp B2S2
+            uint16_t val = (uint16_t)((ecu.catalyst_temp_b2s2 + 40.0) * 10.0);
+            data[2] = highByte(val); data[3] = lowByte(val);
+            len += 2;
             break;
         }
         case 0x40: {
@@ -289,6 +399,44 @@ void sendCurrentData(ECU &ecu, byte pid, bool use29bit) {
         }
         case 0x46: { // Ambient Air Temperature
             data[2] = (byte)(ecu.ambient_temp + 40);
+            len += 1;
+            break;
+        }
+        case 0x49: { // Accelerator Pedal Position D
+            data[2] = (byte)((ecu.accel_pedal_pos_d * 255.0) / 100.0);
+            len += 1;
+            break;
+        }
+        case 0x4A: { // Accelerator Pedal Position E
+            data[2] = (byte)((ecu.accel_pedal_pos_e * 255.0) / 100.0);
+            len += 1;
+            break;
+        }
+        case 0x4C: { // Commanded Throttle Actuator
+            data[2] = (byte)((ecu.commanded_throttle_actuator * 255.0) / 100.0);
+            len += 1;
+            break;
+        }
+        case 0x4D: { // Time Run with MIL On
+            uint16_t val = ecu.time_run_mil_on;
+            data[2] = highByte(val); data[3] = lowByte(val);
+            len += 2;
+            break;
+        }
+        case 0x4E: { // Time Since DTC Cleared
+            uint16_t val = ecu.time_since_dtc_cleared;
+            data[2] = highByte(val); data[3] = lowByte(val);
+            len += 2;
+            break;
+        }
+        case 0x53: { // Absolute EVAP System Vapor Pressure
+            uint16_t val = (uint16_t)(ecu.abs_evap_pressure * 200.0);
+            data[2] = highByte(val); data[3] = lowByte(val);
+            len += 2;
+            break;
+        }
+        case 0x5A: { // Relative Accelerator Pedal Position
+            data[2] = (byte)((ecu.rel_accel_pedal_pos * 255.0) / 100.0);
             len += 1;
             break;
         }

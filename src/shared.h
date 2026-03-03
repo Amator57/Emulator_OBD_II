@@ -53,6 +53,8 @@ struct ECU {
     int intake_temp;
     float short_term_fuel_trim;
     float long_term_fuel_trim;
+    float short_term_fuel_trim_b2; // PID 0x08
+    float long_term_fuel_trim_b2;  // PID 0x09
     float o2_voltage;
     float o2_trim;
     float timing_advance;
@@ -64,6 +66,7 @@ struct ECU {
     int current_gear;
     
     // New PIDs
+    uint16_t fuel_system_status; // PID 0x03
     int distance_mil_on;       // PID 0x21
     float evap_purge;          // PID 0x2E
     int warm_ups;              // PID 0x30
@@ -73,6 +76,40 @@ struct ECU {
     float relative_throttle;   // PID 0x45
     int ambient_temp;          // PID 0x46
     int oil_temp;              // PID 0x5C
+    
+    // Wideband O2 PIDs 34-37
+    float o2_lambda_b1s1; float o2_current_b1s1; // PID 0x34
+    float o2_lambda_b1s2; float o2_current_b1s2; // PID 0x35
+    float o2_lambda_b2s1; float o2_current_b2s1; // PID 0x36
+    float o2_lambda_b2s2; float o2_current_b2s2; // PID 0x37
+
+    // Catalyst Temperatures
+    float catalyst_temp_b1s1; // PID 0x3C
+    float catalyst_temp_b2s1; // PID 0x3D
+    float catalyst_temp_b1s2; // PID 0x3E
+    float catalyst_temp_b2s2; // PID 0x3F
+
+    // New PIDs
+    float commanded_egr;       // PID 0x2C
+    float egr_error;           // PID 0x2D
+    int evap_vapor_pressure;   // PID 0x32 (Pa)
+    float abs_evap_pressure;   // PID 0x53 (kPa)
+
+    // New PIDs from this request
+    int fuel_rail_pressure_relative; // PID 0x22
+    int fuel_rail_pressure_gauge;    // PID 0x23
+    float commanded_throttle_actuator; // PID 0x4C
+    
+    // New PIDs
+    float rel_accel_pedal_pos; // PID 0x5A
+    float accel_pedal_pos_d;   // PID 0x49
+    float accel_pedal_pos_e;   // PID 0x4A
+
+    // New PIDs (1C, 1D, 4D, 4E)
+    uint8_t obd_standard;          // PID 0x1C
+    uint8_t o2_sensors_present;    // PID 0x1D
+    uint16_t time_run_mil_on;      // PID 0x4D
+    uint16_t time_since_dtc_cleared; // PID 0x4E
 
     // Supported PIDs
     uint32_t supported_pids_01_20;

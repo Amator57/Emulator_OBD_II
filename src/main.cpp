@@ -580,7 +580,7 @@ void completeDrivingCycle(ECU &ecu, bool use29bit) {
 }
 
 String getJsonConfig() {
-    DynamicJsonDocument doc(2048);
+    DynamicJsonDocument doc(8192);
 
     // Only saving config for the main ECU (ecus[0]) for now
     doc["vin"] = ecus[0].vin;
@@ -597,17 +597,47 @@ String getJsonConfig() {
     doc["intake_temp"] = ecus[0].intake_temp;
     doc["fuel_trim_s"] = ecus[0].short_term_fuel_trim;
     doc["fuel_trim_l"] = ecus[0].long_term_fuel_trim;
+    doc["fuel_trim_s2"] = ecus[0].short_term_fuel_trim_b2;
+    doc["fuel_trim_l2"] = ecus[0].long_term_fuel_trim_b2;
     doc["o2_volts"] = ecus[0].o2_voltage;
+    doc["obd_std"] = ecus[0].obd_standard;
+    doc["o2_sens"] = ecus[0].o2_sensors_present;
 
     doc["fuel_rate"] = ecus[0].fuel_rate;
     doc["fuel_pressure"] = ecus[0].fuel_pressure;
     doc["fuel_level"] = ecus[0].fuel_level;
     doc["dist_mil"] = ecus[0].distance_with_mil;
     doc["voltage"] = ecus[0].battery_voltage;
+    doc["evap"] = ecus[0].evap_purge;
+    doc["egr_cmd"] = ecus[0].commanded_egr;
+    doc["egr_err"] = ecus[0].egr_error;
+    doc["evap_vp"] = ecus[0].evap_vapor_pressure;
+    doc["evap_abs"] = ecus[0].abs_evap_pressure;
     doc["tcm_gear"] = ecus[1].current_gear;
     doc["abs_speed"] = ecus[2].vehicle_speed;
     doc["abs_vin"] = ecus[2].vin;
     doc["srs_vin"] = ecus[3].vin;
+    
+    doc["fuel_rail_pres_rel"] = ecus[0].fuel_rail_pressure_relative;
+    doc["fuel_rail_pres_gauge"] = ecus[0].fuel_rail_pressure_gauge;
+    doc["cmd_throttle"] = ecus[0].commanded_throttle_actuator;
+    doc["rel_app"] = ecus[0].rel_accel_pedal_pos;
+    doc["app_d"] = ecus[0].accel_pedal_pos_d;
+    doc["app_e"] = ecus[0].accel_pedal_pos_e;
+    doc["time_mil"] = ecus[0].time_run_mil_on;
+    doc["time_clear"] = ecus[0].time_since_dtc_cleared;
+    doc["amb_temp"] = ecus[0].ambient_temp;
+    doc["oil_temp"] = ecus[0].oil_temp;
+
+    doc["cat_b1s1"] = ecus[0].catalyst_temp_b1s1;
+    doc["cat_b2s1"] = ecus[0].catalyst_temp_b2s1;
+    doc["cat_b1s2"] = ecus[0].catalyst_temp_b1s2;
+    doc["cat_b2s2"] = ecus[0].catalyst_temp_b2s2;
+
+    doc["wb_b1s1_l"] = ecus[0].o2_lambda_b1s1; doc["wb_b1s1_c"] = ecus[0].o2_current_b1s1;
+    doc["wb_b1s2_l"] = ecus[0].o2_lambda_b1s2; doc["wb_b1s2_c"] = ecus[0].o2_current_b1s2;
+    doc["wb_b2s1_l"] = ecus[0].o2_lambda_b2s1; doc["wb_b2s1_c"] = ecus[0].o2_current_b2s1;
+    doc["wb_b2s2_l"] = ecus[0].o2_lambda_b2s2; doc["wb_b2s2_c"] = ecus[0].o2_current_b2s2;
     doc["dynamic_rpm_enabled"] = dynamic_rpm_enabled;
     doc["misfire_simulation_enabled"] = misfire_simulation_enabled;
     doc["lean_mixture_simulation_enabled"] = lean_mixture_simulation_enabled;
@@ -635,7 +665,7 @@ String getJsonConfig() {
 }
 
 void parseJsonConfig(String &json_buffer) {
-    DynamicJsonDocument doc(2048);
+    DynamicJsonDocument doc(8192);
     DeserializationError error = deserializeJson(doc, json_buffer);
 
     if (error) {
@@ -660,13 +690,22 @@ void parseJsonConfig(String &json_buffer) {
     ecus[0].intake_temp = doc["intake_temp"] | 30;
     ecus[0].short_term_fuel_trim = doc["fuel_trim_s"] | 0.0;
     ecus[0].long_term_fuel_trim = doc["fuel_trim_l"] | 2.5;
+    ecus[0].short_term_fuel_trim_b2 = doc["fuel_trim_s2"] | 0.0;
+    ecus[0].long_term_fuel_trim_b2 = doc["fuel_trim_l2"] | 2.5;
     ecus[0].o2_voltage = doc["o2_volts"] | 0.45;
+    ecus[0].obd_standard = doc["obd_std"] | 1;
+    ecus[0].o2_sensors_present = doc["o2_sens"] | 0x03;
 
     ecus[0].fuel_rate = doc["fuel_rate"] | 1.5;
     ecus[0].fuel_pressure = doc["fuel_pressure"] | 350;
     ecus[0].fuel_level = doc["fuel_level"] | 75.0;
     ecus[0].distance_with_mil = doc["dist_mil"] | 0;
     ecus[0].battery_voltage = doc["voltage"] | 14.2;
+    ecus[0].evap_purge = doc["evap"] | 0.0;
+    ecus[0].commanded_egr = doc["egr_cmd"] | 0.0;
+    ecus[0].egr_error = doc["egr_err"] | 0.0;
+    ecus[0].evap_vapor_pressure = doc["evap_vp"] | 0;
+    ecus[0].abs_evap_pressure = doc["evap_abs"] | 100.0;
 
     // TCM
     ecus[1].current_gear = doc["tcm_gear"] | 1;
@@ -675,6 +714,27 @@ void parseJsonConfig(String &json_buffer) {
     ecus[2].vehicle_speed = doc["abs_speed"] | 60;
     strncpy(ecus[2].vin, doc["abs_vin"] | "123EMULATOR001ABS", 17);
     strncpy(ecus[3].vin, doc["srs_vin"] | "123EMULATOR001SRS", 17);
+    
+    ecus[0].fuel_rail_pressure_relative = doc["fuel_rail_pres_rel"] | 300;
+    ecus[0].fuel_rail_pressure_gauge = doc["fuel_rail_pres_gauge"] | 4000;
+    ecus[0].commanded_throttle_actuator = doc["cmd_throttle"] | 15.0;
+    ecus[0].rel_accel_pedal_pos = doc["rel_app"] | 0.0;
+    ecus[0].accel_pedal_pos_d = doc["app_d"] | 15.0;
+    ecus[0].accel_pedal_pos_e = doc["app_e"] | 15.0;
+    ecus[0].time_run_mil_on = doc["time_mil"] | 0;
+    ecus[0].time_since_dtc_cleared = doc["time_clear"] | 0;
+    ecus[0].ambient_temp = doc["amb_temp"] | 20;
+    ecus[0].oil_temp = doc["oil_temp"] | 85;
+
+    ecus[0].catalyst_temp_b1s1 = doc["cat_b1s1"] | 400.0;
+    ecus[0].catalyst_temp_b2s1 = doc["cat_b2s1"] | 400.0;
+    ecus[0].catalyst_temp_b1s2 = doc["cat_b1s2"] | 350.0;
+    ecus[0].catalyst_temp_b2s2 = doc["cat_b2s2"] | 350.0;
+
+    ecus[0].o2_lambda_b1s1 = doc["wb_b1s1_l"] | 1.0; ecus[0].o2_current_b1s1 = doc["wb_b1s1_c"] | 0.0;
+    ecus[0].o2_lambda_b1s2 = doc["wb_b1s2_l"] | 1.0; ecus[0].o2_current_b1s2 = doc["wb_b1s2_c"] | 0.0;
+    ecus[0].o2_lambda_b2s1 = doc["wb_b2s1_l"] | 1.0; ecus[0].o2_current_b2s1 = doc["wb_b2s1_c"] | 0.0;
+    ecus[0].o2_lambda_b2s2 = doc["wb_b2s2_l"] | 1.0; ecus[0].o2_current_b2s2 = doc["wb_b2s2_c"] | 0.0;
 
     dynamic_rpm_enabled = doc["dynamic_rpm_enabled"] | false;
     misfire_simulation_enabled = doc["misfire_simulation_enabled"] | false;
@@ -746,12 +806,42 @@ void saveConfig() {
     preferences.putInt("iat", ecus[0].intake_temp);
     preferences.putFloat("stft", ecus[0].short_term_fuel_trim);
     preferences.putFloat("ltft", ecus[0].long_term_fuel_trim);
+    preferences.putFloat("stft2", ecus[0].short_term_fuel_trim_b2);
+    preferences.putFloat("ltft2", ecus[0].long_term_fuel_trim_b2);
 
+    preferences.putInt("obd_std", ecus[0].obd_standard);
+    preferences.putInt("o2_sens", ecus[0].o2_sensors_present);
     preferences.putFloat("fuelRate", ecus[0].fuel_rate);
     preferences.putInt("fuelPres", ecus[0].fuel_pressure);
     preferences.putFloat("fuelLvl", ecus[0].fuel_level);
     preferences.putInt("distMil", ecus[0].distance_with_mil);
     preferences.putFloat("voltage", ecus[0].battery_voltage);
+    preferences.putFloat("evap", ecus[0].evap_purge);
+    preferences.putFloat("egr_cmd", ecus[0].commanded_egr);
+    preferences.putFloat("egr_err", ecus[0].egr_error);
+    preferences.putInt("evap_vp", ecus[0].evap_vapor_pressure);
+    preferences.putFloat("evap_abs", ecus[0].abs_evap_pressure);
+    
+    preferences.putInt("frp_rel", ecus[0].fuel_rail_pressure_relative);
+    preferences.putInt("frp_gauge", ecus[0].fuel_rail_pressure_gauge);
+    preferences.putFloat("cmd_throt", ecus[0].commanded_throttle_actuator);
+    preferences.putFloat("rel_app", ecus[0].rel_accel_pedal_pos);
+    preferences.putFloat("app_d", ecus[0].accel_pedal_pos_d);
+    preferences.putFloat("app_e", ecus[0].accel_pedal_pos_e);
+    preferences.putInt("time_mil", ecus[0].time_run_mil_on);
+    preferences.putInt("time_clear", ecus[0].time_since_dtc_cleared);
+    preferences.putInt("amb_temp", ecus[0].ambient_temp);
+    preferences.putInt("oil_temp", ecus[0].oil_temp);
+
+    preferences.putFloat("cat_b1s1", ecus[0].catalyst_temp_b1s1);
+    preferences.putFloat("cat_b2s1", ecus[0].catalyst_temp_b2s1);
+    preferences.putFloat("cat_b1s2", ecus[0].catalyst_temp_b1s2);
+    preferences.putFloat("cat_b2s2", ecus[0].catalyst_temp_b2s2);
+
+    preferences.putFloat("wb_b1s1_l", ecus[0].o2_lambda_b1s1); preferences.putFloat("wb_b1s1_c", ecus[0].o2_current_b1s1);
+    preferences.putFloat("wb_b1s2_l", ecus[0].o2_lambda_b1s2); preferences.putFloat("wb_b1s2_c", ecus[0].o2_current_b1s2);
+    preferences.putFloat("wb_b2s1_l", ecus[0].o2_lambda_b2s1); preferences.putFloat("wb_b2s1_c", ecus[0].o2_current_b2s1);
+    preferences.putFloat("wb_b2s2_l", ecus[0].o2_lambda_b2s2); preferences.putFloat("wb_b2s2_c", ecus[0].o2_current_b2s2);
 
     // --- Freeze Frame ---
     preferences.putBool("ff_set", ecus[0].freezeFrameSet);
@@ -820,12 +910,42 @@ void loadConfig() {
     ecus[0].intake_temp = preferences.getInt("iat", 30);
     ecus[0].short_term_fuel_trim = preferences.getFloat("stft", 0.0);
     ecus[0].long_term_fuel_trim = preferences.getFloat("ltft", 2.5);
+    ecus[0].short_term_fuel_trim_b2 = preferences.getFloat("stft2", 0.0);
+    ecus[0].long_term_fuel_trim_b2 = preferences.getFloat("ltft2", 2.5);
 
+    ecus[0].obd_standard = preferences.getInt("obd_std", 1);
+    ecus[0].o2_sensors_present = preferences.getInt("o2_sens", 0x03);
     ecus[0].fuel_rate = preferences.getFloat("fuelRate", 0.8);
     ecus[0].fuel_pressure = preferences.getInt("fuelPres", 350);
     ecus[0].fuel_level = preferences.getFloat("fuelLvl", 50.0);
     ecus[0].distance_with_mil = preferences.getInt("distMil", 0);
     ecus[0].battery_voltage = preferences.getFloat("voltage", 12.5);
+    ecus[0].evap_purge = preferences.getFloat("evap", 0.0);
+    ecus[0].commanded_egr = preferences.getFloat("egr_cmd", 0.0);
+    ecus[0].egr_error = preferences.getFloat("egr_err", 0.0);
+    ecus[0].evap_vapor_pressure = preferences.getInt("evap_vp", 0);
+    ecus[0].abs_evap_pressure = preferences.getFloat("evap_abs", 100.0);
+    
+    ecus[0].fuel_rail_pressure_relative = preferences.getInt("frp_rel", 300);
+    ecus[0].fuel_rail_pressure_gauge = preferences.getInt("frp_gauge", 4000);
+    ecus[0].commanded_throttle_actuator = preferences.getFloat("cmd_throt", 15.0);
+    ecus[0].rel_accel_pedal_pos = preferences.getFloat("rel_app", 0.0);
+    ecus[0].accel_pedal_pos_d = preferences.getFloat("app_d", 15.0);
+    ecus[0].accel_pedal_pos_e = preferences.getFloat("app_e", 15.0);
+    ecus[0].time_run_mil_on = preferences.getInt("time_mil", 0);
+    ecus[0].time_since_dtc_cleared = preferences.getInt("time_clear", 0);
+    ecus[0].ambient_temp = preferences.getInt("amb_temp", 20);
+    ecus[0].oil_temp = preferences.getInt("oil_temp", 85);
+
+    ecus[0].catalyst_temp_b1s1 = preferences.getFloat("cat_b1s1", 400.0);
+    ecus[0].catalyst_temp_b2s1 = preferences.getFloat("cat_b2s1", 400.0);
+    ecus[0].catalyst_temp_b1s2 = preferences.getFloat("cat_b1s2", 350.0);
+    ecus[0].catalyst_temp_b2s2 = preferences.getFloat("cat_b2s2", 350.0);
+
+    ecus[0].o2_lambda_b1s1 = preferences.getFloat("wb_b1s1_l", 1.0); ecus[0].o2_current_b1s1 = preferences.getFloat("wb_b1s1_c", 0.0);
+    ecus[0].o2_lambda_b1s2 = preferences.getFloat("wb_b1s2_l", 1.0); ecus[0].o2_current_b1s2 = preferences.getFloat("wb_b1s2_c", 0.0);
+    ecus[0].o2_lambda_b2s1 = preferences.getFloat("wb_b2s1_l", 1.0); ecus[0].o2_current_b2s1 = preferences.getFloat("wb_b2s1_c", 0.0);
+    ecus[0].o2_lambda_b2s2 = preferences.getFloat("wb_b2s2_l", 1.0); ecus[0].o2_current_b2s2 = preferences.getFloat("wb_b2s2_c", 0.0);
 
     // --- Freeze Frame ---
     ecus[0].freezeFrameSet = preferences.getBool("ff_set", false);

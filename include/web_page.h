@@ -46,6 +46,13 @@ const char index_html[] PROGMEM = R"rawliteral(
         input:checked + .slider:before { transform: translateX(26px); }
         canvas { background-color: #fff; border: 1px solid #ccc; border-radius: 4px; width: 100%; height: 200px; margin-top: 10px; }
         #can_log_area { width: 100%; height: 300px; font-family: monospace; font-size: 12px; border: 1px solid #ccc; overflow-y: scroll; background: #f9f9f9; padding: 5px; box-sizing: border-box; }
+        #dtc-input-container { display: flex; align-items: center; gap: 5px; margin-bottom: 15px; flex-wrap: nowrap; overflow-x: auto; }
+        .dtc-char { display: flex; flex-direction: column; align-items: center; }
+        .dtc-char span { font-size: 2em; font-family: monospace; border: 1px solid #ccc; padding: 5px 10px; border-radius: 4px; background: #fff; min-width: 25px; text-align: center;}
+        .dtc-char button { border: 1px solid #ccc; background: #f0f0f0; cursor: pointer; font-size: 1em; padding: 0 8px; margin: 2px 0; width: 100%; }
+        #dtc-list-ui { list-style: none; padding: 0; margin-top: 10px; }
+        #dtc-list-ui li { background: #eee; padding: 8px; margin-bottom: 5px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; font-family: monospace; }
+        #dtc-list-ui .remove-dtc { background: #f44336; color: white; border: none; border-radius: 50%; cursor: pointer; width: 24px; height: 24px; line-height: 24px; text-align: center; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -159,6 +166,10 @@ const char index_html[] PROGMEM = R"rawliteral(
                 <span class="formula">Formula: (A*256+B)/4</span>
                 <input type="number" id="rpm" name="rpm" value="1500">
 
+                <label for="fuel_sys">Fuel System Status (PID 0x03):</label>
+                <span class="formula">Value (Dec): 2=Closed Loop, 1=Open Loop, 512=CL (Sys1)</span>
+                <input type="number" id="fuel_sys" name="fuel_sys" value="512">
+
                 <label for="load">Engine Load (%) (PID 0x04):</label>
                 <span class="formula">Formula: A * 100/255</span>
                 <input type="number" id="load" name="load" step="0.1" value="35.0">
@@ -195,9 +206,25 @@ const char index_html[] PROGMEM = R"rawliteral(
                 <span class="formula">Formula: (A-128)*100/128</span>
                 <input type="number" id="ltft" name="ltft" step="0.1" value="2.5">
 
+                <label for="stft2">Short Term Fuel Trim B2 (%) (PID 0x08):</label>
+                <span class="formula">Formula: (A-128)*100/128</span>
+                <input type="number" id="stft2" name="stft2" step="0.1" value="0.0">
+
+                <label for="ltft2">Long Term Fuel Trim B2 (%) (PID 0x09):</label>
+                <span class="formula">Formula: (A-128)*100/128</span>
+                <input type="number" id="ltft2" name="ltft2" step="0.1" value="2.5">
+
                 <label for="o2">O2 Sensor B1S1 (V) (PID 0x14):</label>
                 <span class="formula">Formula: A/200</span>
                 <input type="number" id="o2" name="o2" step="0.01" value="0.45">
+
+                <label for="obd_std">OBD Standard (PID 0x1C):</label>
+                <span class="formula">Value: 1=OBD-II, 6=EOBD, etc.</span>
+                <input type="number" id="obd_std" name="obd_std" value="1">
+
+                <label for="o2_sens">O2 Sensors Present (PID 0x1D):</label>
+                <span class="formula">Bitmask: Bank1(0-3), Bank2(4-7)</span>
+                <input type="number" id="o2_sens" name="o2_sens" value="3">
 
                 <label for="fuel_pressure">Fuel Pressure (kPa) (PID 0x0A):</label>
                 <span class="formula">Formula: A * 3</span>
@@ -227,6 +254,18 @@ const char index_html[] PROGMEM = R"rawliteral(
                 <span class="formula">Formula: A * 100/255</span>
                 <input type="number" id="evap" name="evap" step="0.1" value="0.0">
 
+                <label for="egr_cmd">Commanded EGR (%) (PID 0x2C):</label>
+                <span class="formula">Formula: A * 100/255</span>
+                <input type="number" id="egr_cmd" name="egr_cmd" step="0.1" value="0.0">
+
+                <label for="egr_err">EGR Error (%) (PID 0x2D):</label>
+                <span class="formula">Formula: (A-128) * 100/128</span>
+                <input type="number" id="egr_err" name="egr_err" step="0.1" value="0.0">
+
+                <label for="evap_vp">EVAP Vapor Pressure (Pa) (PID 0x32):</label>
+                <span class="formula">Formula: (A*256+B)/4</span>
+                <input type="number" id="evap_vp" name="evap_vp" value="0">
+
                 <label for="warm_ups">Warm-ups Since Cleared (PID 0x30):</label>
                 <span class="formula">Formula: A</span>
                 <input type="number" id="warm_ups" name="warm_ups" value="10">
@@ -234,6 +273,42 @@ const char index_html[] PROGMEM = R"rawliteral(
                 <label for="baro">Barometric Pressure (kPa) (PID 0x33):</label>
                 <span class="formula">Formula: A</span>
                 <input type="number" id="baro" name="baro" value="100">
+
+                <label for="fuel_rail_pres_rel">Fuel Rail Pressure (relative) (kPa) (PID 0x22):</label>
+                <span class="formula">Formula: (A*256+B)*0.079</span>
+                <input type="number" id="fuel_rail_pres_rel" name="fuel_rail_pres_rel" value="300">
+
+                <label for="fuel_rail_pres_gauge">Fuel Rail Pressure (gauge) (kPa) (PID 0x23):</label>
+                <span class="formula">Formula: (A*256+B)*10</span>
+                <input type="number" id="fuel_rail_pres_gauge" name="fuel_rail_pres_gauge" value="4000">
+
+                <h3>Wideband O2 Sensors</h3>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <div>
+                        <label>B1S1 Lambda (PID 34): <input type="number" id="wb_b1s1_l" name="wb_b1s1_l" step="0.01" value="1.0"></label>
+                        <label>B1S1 mA: <input type="number" id="wb_b1s1_c" name="wb_b1s1_c" step="0.1" value="0.0"></label>
+                    </div>
+                    <div>
+                        <label>B1S2 Lambda (PID 35): <input type="number" id="wb_b1s2_l" name="wb_b1s2_l" step="0.01" value="1.0"></label>
+                        <label>B1S2 mA: <input type="number" id="wb_b1s2_c" name="wb_b1s2_c" step="0.1" value="0.0"></label>
+                    </div>
+                    <div>
+                        <label>B2S1 Lambda (PID 36): <input type="number" id="wb_b2s1_l" name="wb_b2s1_l" step="0.01" value="1.0"></label>
+                        <label>B2S1 mA: <input type="number" id="wb_b2s1_c" name="wb_b2s1_c" step="0.1" value="0.0"></label>
+                    </div>
+                    <div>
+                        <label>B2S2 Lambda (PID 37): <input type="number" id="wb_b2s2_l" name="wb_b2s2_l" step="0.01" value="1.0"></label>
+                        <label>B2S2 mA: <input type="number" id="wb_b2s2_c" name="wb_b2s2_c" step="0.1" value="0.0"></label>
+                    </div>
+                </div>
+
+                <h3>Catalyst Temperatures (C)</h3>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <label>Bank 1 Sensor 1 (PID 3C): <input type="number" id="cat_b1s1" name="cat_b1s1" value="400"></label>
+                    <label>Bank 2 Sensor 1 (PID 3D): <input type="number" id="cat_b2s1" name="cat_b2s1" value="400"></label>
+                    <label>Bank 1 Sensor 2 (PID 3E): <input type="number" id="cat_b1s2" name="cat_b1s2" value="350"></label>
+                    <label>Bank 2 Sensor 2 (PID 3F): <input type="number" id="cat_b2s2" name="cat_b2s2" value="350"></label>
+                </div>
                 <button type="button" class="button-blue" onclick="updateAndShow(1)">Apply Changes</button>
             </div>
 
@@ -247,6 +322,10 @@ const char index_html[] PROGMEM = R"rawliteral(
                 <span class="formula">Formula: ((A*256)+B)/20</span>
                 <input type="number" id="fuel_rate" name="fuel_rate" step="0.1" value="1.5">
 
+                <label for="evap_abs">Abs EVAP Pressure (kPa) (PID 0x53):</label>
+                <span class="formula">Formula: (A*256+B)/200</span>
+                <input type="number" id="evap_abs" name="evap_abs" step="0.1" value="100.0">
+
                 <label for="abs_load">Absolute Load (%) (PID 0x43):</label>
                 <span class="formula">Formula: (A*256+B)*100/255</span>
                 <input type="number" id="abs_load" name="abs_load" step="0.1" value="20.0">
@@ -258,6 +337,30 @@ const char index_html[] PROGMEM = R"rawliteral(
                 <label for="rel_tps">Relative Throttle Pos (%) (PID 0x45):</label>
                 <span class="formula">Formula: A*100/255</span>
                 <input type="number" id="rel_tps" name="rel_tps" step="0.1" value="10.0">
+
+                <label for="cmd_throttle">Commanded Throttle Actuator (%) (PID 0x4C):</label>
+                <span class="formula">Formula: A*100/255</span>
+                <input type="number" id="cmd_throttle" name="cmd_throttle" step="0.1" value="15.0">
+
+                <label for="rel_app">Relative Accel Pedal Pos (%) (PID 0x5A):</label>
+                <span class="formula">Formula: A*100/255</span>
+                <input type="number" id="rel_app" name="rel_app" step="0.1" value="0.0">
+
+                <label for="app_d">Accel Pedal Pos D (%) (PID 0x49):</label>
+                <span class="formula">Formula: A*100/255</span>
+                <input type="number" id="app_d" name="app_d" step="0.1" value="15.0">
+
+                <label for="app_e">Accel Pedal Pos E (%) (PID 0x4A):</label>
+                <span class="formula">Formula: A*100/255</span>
+                <input type="number" id="app_e" name="app_e" step="0.1" value="15.0">
+
+                <label for="time_mil">Time Run with MIL On (min) (PID 0x4D):</label>
+                <span class="formula">Formula: A*256 + B</span>
+                <input type="number" id="time_mil" name="time_mil" value="0">
+
+                <label for="time_clear">Time Since DTC Cleared (min) (PID 0x4E):</label>
+                <span class="formula">Formula: A*256 + B</span>
+                <input type="number" id="time_clear" name="time_clear" value="0">
 
                 <label for="amb_temp">Ambient Air Temp (C) (PID 0x46):</label>
                 <span class="formula">Formula: A-40</span>
@@ -298,9 +401,41 @@ const char index_html[] PROGMEM = R"rawliteral(
 
             <div id="page-mode03" class="page-content">
                 <h2>Mode 03 / 07 / 0A - DTCs</h2>
-                <label for="dtc_list">Inject DTCs (comma-separated, e.g., P0123,C0456):</label>
-                <input type="text" id="dtc_list" name="dtc_list" placeholder="P0101,C0300,B1000">
-                <p><i>Note: Adding a DTC here will populate Current (Mode 03), Pending (Mode 07), and Permanent (Mode 0A) lists.</i></p>
+                <p>Use the arrows to construct a DTC and press "Add DTC" or Enter key.</p>
+                <div id="dtc-input-container">
+                    <div class="dtc-char">
+                        <button type="button" class="arrow-up" onclick="changeDTCChar(0, 1)">&#9650;</button>
+                        <span id="dtc-char-0">P</span>
+                        <button type="button" class="arrow-down" onclick="changeDTCChar(0, -1)">&#9660;</button>
+                    </div>
+                    <div class="dtc-char">
+                        <button type="button" class="arrow-up" onclick="changeDTCChar(1, 1)">&#9650;</button>
+                        <span id="dtc-char-1">0</span>
+                        <button type="button" class="arrow-down" onclick="changeDTCChar(1, -1)">&#9660;</button>
+                    </div>
+                    <div class="dtc-char">
+                        <button type="button" class="arrow-up" onclick="changeDTCChar(2, 1)">&#9650;</button>
+                        <span id="dtc-char-2">1</span>
+                        <button type="button" class="arrow-down" onclick="changeDTCChar(2, -1)">&#9660;</button>
+                    </div>
+                    <div class="dtc-char">
+                        <button type="button" class="arrow-up" onclick="changeDTCChar(3, 1)">&#9650;</button>
+                        <span id="dtc-char-3">0</span>
+                        <button type="button" class="arrow-down" onclick="changeDTCChar(3, -1)">&#9660;</button>
+                    </div>
+                    <div class="dtc-char">
+                        <button type="button" class="arrow-up" onclick="changeDTCChar(4, 1)">&#9650;</button>
+                        <span id="dtc-char-4">1</span>
+                        <button type="button" class="arrow-down" onclick="changeDTCChar(4, -1)">&#9660;</button>
+                    </div>
+                    <button type="button" id="addDtcBtn" class="button-blue" style="margin-left: 10px; height: 100%;">Add DTC</button>
+                </div>
+                <div id="dtc-list-container">
+                    <h3>Injected DTCs</h3>
+                    <ul id="dtc-list-ui"></ul>
+                </div>
+                <input type="hidden" id="dtc_list" name="dtc_list">
+                <p><i>Note: Adding a DTC here will populate Current (Mode 03), Pending (Mode 07), and Permanent (Mode 0A) lists. Press "Apply Changes" to send to emulator.</i></p>
                 <button type="button" class="button-blue" onclick="updateAndShow(6)">Apply Changes</button>
             </div>
 
@@ -637,7 +772,30 @@ const char index_html[] PROGMEM = R"rawliteral(
         });
 
         function toggleDynamicRPM(cb) {
+            setSimulationMode(cb.checked);
             fetch('/update?dynamic_rpm=' + (cb.checked ? 'true' : 'false'));
+        }
+
+        function setSimulationMode(enabled) {
+            const disabled = enabled;
+            const submitBtn = document.getElementById('submitBtn');
+            if (submitBtn) submitBtn.disabled = disabled;
+            
+            // Знаходимо та блокуємо всі кнопки "Apply Changes"
+            const applyBtns = document.querySelectorAll('button[onclick^="updateAndShow"]');
+            applyBtns.forEach(btn => {
+                btn.disabled = disabled;
+                // Змінюємо стиль курсору та прозорість для візуального ефекту
+                btn.style.opacity = disabled ? "0.6" : "1.0";
+                btn.style.cursor = disabled ? "not-allowed" : "pointer";
+            });
+
+            const addDtcBtn = document.getElementById('addDtcBtn');
+            if (addDtcBtn) {
+                addDtcBtn.disabled = disabled;
+                addDtcBtn.style.opacity = disabled ? "0.6" : "1.0";
+                addDtcBtn.style.cursor = disabled ? "not-allowed" : "pointer";
+            }
         }
 
         function toggleMisfireSim(cb) {
@@ -661,7 +819,11 @@ const char index_html[] PROGMEM = R"rawliteral(
                 .then(data => {
                     statusDiv.textContent = data;
                     statusDiv.style.color = 'blue';
-                    document.getElementById('dtc_list').value = ''; // Очищаємо поле вводу DTC
+                    // document.getElementById('dtc_list').value = ''; // Очищаємо поле вводу DTC
+                    if (typeof renderDtcList === 'function') {
+                        injectedDtcs = [];
+                        renderDtcList();
+                    }
                 })
                 .catch(error => {
                     statusDiv.textContent = 'Error: Could not connect to the server.';
@@ -787,6 +949,50 @@ const char index_html[] PROGMEM = R"rawliteral(
         let gateway = `ws://${window.location.hostname}/ws`;
         let websocket;
 
+        let currentDtc = ['P', '0', '1', '0', '1'];
+        const dtcChars = [
+            ['P', 'C', 'B', 'U'],
+            ['0', '1', '2', '3'],
+            ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'],
+            ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'],
+            ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F']
+        ];
+        let injectedDtcs = [];
+
+        function changeDTCChar(position, direction) {
+            const charSet = dtcChars[position];
+            let currentIndex = charSet.indexOf(currentDtc[position]);
+            currentIndex += direction;
+            if (currentIndex < 0) currentIndex = charSet.length - 1;
+            if (currentIndex >= charSet.length) currentIndex = 0;
+            currentDtc[position] = charSet[currentIndex];
+            document.getElementById(`dtc-char-${position}`).textContent = currentDtc[position];
+        }
+
+        function renderDtcList() {
+            const listElement = document.getElementById('dtc-list-ui');
+            listElement.innerHTML = '';
+            injectedDtcs.forEach((dtc, index) => {
+                const li = document.createElement('li');
+                li.innerHTML = `<span>${dtc}</span> <button type="button" class="remove-dtc" onclick="removeDtc(${index})">&times;</button>`;
+                listElement.appendChild(li);
+            });
+            document.getElementById('dtc_list').value = injectedDtcs.join(',');
+        }
+
+        function addDtc() {
+            const newDtc = currentDtc.join('');
+            if (injectedDtcs.includes(newDtc)) { alert('DTC ' + newDtc + ' is already in the list.'); return; }
+            if (injectedDtcs.length >= 5) { alert('Maximum number of DTCs (5) reached.'); return; }
+            injectedDtcs.push(newDtc);
+            renderDtcList();
+        }
+
+        function removeDtc(index) {
+            injectedDtcs.splice(index, 1);
+            renderDtcList();
+        }
+
         // --- Chart Logic ---
         const canvas = document.getElementById('rpmChart');
         const ctx = canvas.getContext('2d');
@@ -905,6 +1111,7 @@ const char index_html[] PROGMEM = R"rawliteral(
             document.getElementById('status_cal_id').textContent = data.cal_id;
             document.getElementById('status_cvn').textContent = data.cvn;
             document.getElementById('status_rpm').textContent = data.rpm;
+            if(data.fuel_sys !== undefined) document.getElementById('fuel_sys').value = data.fuel_sys;
             document.getElementById('status_gear').textContent = data.tcm_gear;
             document.getElementById('status_temp').textContent = data.temp;
             document.getElementById('status_speed').textContent = data.speed;
@@ -951,6 +1158,14 @@ const char index_html[] PROGMEM = R"rawliteral(
             if (data.lean_mixture_sim !== undefined) {
                 document.getElementById('lean_mixture_sim_check').checked = data.lean_mixture_sim;
             }
+            
+            if (data.dynamic_rpm !== undefined) {
+                const dynCheck = document.getElementById('dynamic_rpm_check');
+                if (dynCheck.checked !== data.dynamic_rpm) {
+                    dynCheck.checked = data.dynamic_rpm;
+                }
+                setSimulationMode(data.dynamic_rpm);
+            }
 
             // Синхронізуємо поля форми
             document.getElementById('vin').value = data.vin;
@@ -967,7 +1182,11 @@ const char index_html[] PROGMEM = R"rawliteral(
             document.getElementById('iat').value = data.iat;
             document.getElementById('stft').value = Number(data.stft).toFixed(1);
             document.getElementById('ltft').value = Number(data.ltft).toFixed(1);
+            document.getElementById('stft2').value = Number(data.stft2).toFixed(1);
+            document.getElementById('ltft2').value = Number(data.ltft2).toFixed(1);
             document.getElementById('o2').value = Number(data.o2).toFixed(2);
+            if(data.obd_std !== undefined) document.getElementById('obd_std').value = data.obd_std;
+            if(data.o2_sens !== undefined) document.getElementById('o2_sens').value = data.o2_sens;
             document.getElementById('timing').value = Number(data.timing).toFixed(1);
             document.getElementById('fuel_pressure').value = data.fuel_pressure;
             document.getElementById('fuel_rate').value = Number(data.fuel_rate).toFixed(1);
@@ -975,15 +1194,39 @@ const char index_html[] PROGMEM = R"rawliteral(
             document.getElementById('dist_since_clear').value = data.dist_mil;
             document.getElementById('dist_mil_on').value = data.dist_mil_on;
             document.getElementById('evap').value = Number(data.evap).toFixed(1);
+            if(data.egr_cmd !== undefined) document.getElementById('egr_cmd').value = Number(data.egr_cmd).toFixed(1);
+            if(data.egr_err !== undefined) document.getElementById('egr_err').value = Number(data.egr_err).toFixed(1);
+            if(data.evap_vp !== undefined) document.getElementById('evap_vp').value = data.evap_vp;
+            if(data.evap_abs !== undefined) document.getElementById('evap_abs').value = Number(data.evap_abs).toFixed(1);
             document.getElementById('warm_ups').value = data.warm_ups;
             document.getElementById('baro').value = data.baro;
+            if(data.fuel_rail_pres_rel !== undefined) document.getElementById('fuel_rail_pres_rel').value = data.fuel_rail_pres_rel;
+            if(data.fuel_rail_pres_gauge !== undefined) document.getElementById('fuel_rail_pres_gauge').value = data.fuel_rail_pres_gauge;
+            document.getElementById('wb_b1s1_l').value = Number(data.wb_b1s1_l).toFixed(2); document.getElementById('wb_b1s1_c').value = Number(data.wb_b1s1_c).toFixed(1);
+            document.getElementById('wb_b1s2_l').value = Number(data.wb_b1s2_l).toFixed(2); document.getElementById('wb_b1s2_c').value = Number(data.wb_b1s2_c).toFixed(1);
+            document.getElementById('wb_b2s1_l').value = Number(data.wb_b2s1_l).toFixed(2); document.getElementById('wb_b2s1_c').value = Number(data.wb_b2s1_c).toFixed(1);
+            document.getElementById('wb_b2s2_l').value = Number(data.wb_b2s2_l).toFixed(2); document.getElementById('wb_b2s2_c').value = Number(data.wb_b2s2_c).toFixed(1);
+            if(data.cat_b1s1 !== undefined) document.getElementById('cat_b1s1').value = data.cat_b1s1;
+            if(data.cat_b2s1 !== undefined) document.getElementById('cat_b2s1').value = data.cat_b2s1;
+            if(data.cat_b1s2 !== undefined) document.getElementById('cat_b1s2').value = data.cat_b1s2;
+            if(data.cat_b2s2 !== undefined) document.getElementById('cat_b2s2').value = data.cat_b2s2;
             document.getElementById('abs_load').value = Number(data.abs_load).toFixed(1);
             document.getElementById('lambda').value = Number(data.lambda).toFixed(2);
             document.getElementById('rel_tps').value = Number(data.rel_tps).toFixed(1);
+            if(data.cmd_throttle !== undefined) document.getElementById('cmd_throttle').value = Number(data.cmd_throttle).toFixed(1);
+            if(data.rel_app !== undefined) document.getElementById('rel_app').value = Number(data.rel_app).toFixed(1);
+            if(data.app_d !== undefined) document.getElementById('app_d').value = Number(data.app_d).toFixed(1);
+            if(data.app_e !== undefined) document.getElementById('app_e').value = Number(data.app_e).toFixed(1);
+            if(data.time_mil !== undefined) document.getElementById('time_mil').value = data.time_mil;
+            if(data.time_clear !== undefined) document.getElementById('time_clear').value = data.time_clear;
             document.getElementById('amb_temp').value = data.amb_temp;
             document.getElementById('oil_temp').value = data.oil_temp;
             document.getElementById('voltage_pid').value = Number(data.voltage).toFixed(1);
-            document.getElementById('dtc_list').value = data.dtcs.join(',');
+            
+            if (JSON.stringify(injectedDtcs) !== JSON.stringify(data.dtcs)) {
+                injectedDtcs = data.dtcs || [];
+                renderDtcList();
+            }
 
             // ABS & SRS
             if(data.abs_speed !== undefined) document.getElementById('abs_speed').value = data.abs_speed;
@@ -1030,11 +1273,24 @@ const char index_html[] PROGMEM = R"rawliteral(
             drawChart();
         }
 
+        document.addEventListener('keydown', function(event) {
+            // Check if the DTC page is active
+            if (document.getElementById('page-mode03').style.display === 'block') {
+                if (event.key === 'Enter') {
+                    event.preventDefault(); // Prevent form submission if any
+                    document.getElementById('addDtcBtn').click(); // Trigger the add button click
+                }
+            }
+        });
+
         window.addEventListener('load', function() {
             // Show the first tab by default
             showPage('page-general', document.querySelector('.tab-button'));
             resizeCanvas();
             initWebSocket();
+            // Init DTC input
+            document.getElementById('addDtcBtn').addEventListener('click', addDtc);
+            for(let i=0; i<5; i++) { document.getElementById(`dtc-char-${i}`).textContent = currentDtc[i]; }
         });
     </script>
 </body>
