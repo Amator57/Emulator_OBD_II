@@ -3,19 +3,6 @@
 
 IsoTpLink isoTpLink;
 
-// --- TX Queue Implementation ---
-struct IsotpTxRequest {
-    uint32_t id;
-    uint8_t data[ISOTP_MAX_DATA_LEN];
-    uint16_t len;
-    bool extended;
-};
-
-static IsotpTxRequest txQueue[8]; // Черга на 8 повідомлень
-static int txQueueHead = 0;
-static int txQueueTail = 0;
-static int txQueueCount = 0;
-
 // Helper to send a raw CAN frame
 static void isotp_send_can(uint32_t id, const uint8_t* data, uint8_t len, bool ext) {
     twai_message_t tx_frame;
@@ -37,10 +24,6 @@ void isotp_init() {
     memset(&isoTpLink, 0, sizeof(IsoTpLink));
     isoTpLink.rxState = ISOTP_IDLE;
     isoTpLink.txState = ISOTP_IDLE;
-    // Reset Queue
-    txQueueHead = 0;
-    txQueueTail = 0;
-    txQueueCount = 0;
 }
 
 void isotp_on_frame(const twai_message_t& frame) {
@@ -79,10 +62,16 @@ void isotp_on_frame(const twai_message_t& frame) {
         // Determine Reply ID
         uint32_t replyId = 0;
         if (frame.extd) {
+            // For 29-bit UDS, the reply ID is constructed by swapping source and target addresses
+            // Example: Request 0x18DA10F1 (TA=10, SA=F1) -> Reply 0x18DAF110 (TA=F1, SA=10)
             uint32_t sa = frame.identifier & 0xFF; // Source Address
             uint32_t ta = (frame.identifier >> 8) & 0xFF; // Target Address
+            // The rest of the ID (prio, etc.) is usually preserved.
+            // Assuming format is 0x18DA<TA><SA>
             replyId = (frame.identifier & 0xFFFF0000) | (sa << 8) | ta;
         } else {
+            // For 11-bit OBD, reply is usually Tester ID + 8
+            // Example: Request 0x7E0 -> Reply 0x7E8
             replyId = frame.identifier + 8;
         }
 
@@ -101,6 +90,7 @@ void isotp_on_frame(const twai_message_t& frame) {
 
         uint8_t seq = frame.data[0] & 0x0F;
         if (seq != isoTpLink.rxNextSeq) {
+            // Wrong sequence number, abort reception
             isoTpLink.rxState = ISOTP_IDLE;
             isoTpLink.rxLen = 0;
             return;
@@ -124,6 +114,7 @@ void isotp_on_frame(const twai_message_t& frame) {
             isoTpLink.txBlockSize = frame.data[1];
             isoTpLink.txStMin = frame.data[2];
             
+            // As per ISO 15765-2, values 0x80-0xF0 are reserved and should be interpreted as 0x7F (127ms)
             if (isoTpLink.txStMin > 0x7F && (isoTpLink.txStMin < 0xF1 || isoTpLink.txStMin > 0xF9)) {
                 isoTpLink.txStMin = 127; 
             }
@@ -158,22 +149,25 @@ void isotp_poll() {
         if (!fault_stmin_overflow) {
             if (isoTpLink.txStMin <= 0x7F) { // 0-127 ms
                 delay_needed = isoTpLink.txStMin;
-                if (delay_needed < 20) delay_needed = 20;
+                if (delay_needed < 20) delay_needed = 20; // Збільшено до 20мс для гарантованої стабільності
             } else if (isoTpLink.txStMin >= 0xF1 && isoTpLink.txStMin <= 0xF9) { // 100-900 us
-                delay_needed = 1;
+                delay_needed = 1; // Treat as 1ms for simplicity in a non-realtime system
             }
         }
+        // if fault_stmin_overflow is true, delay_needed is 0, so we send as fast as possible
 
         if (now - isoTpLink.txTimer >= delay_needed) {
+            // Check BlockSize before sending
             if (isoTpLink.txBlockSize > 0 && isoTpLink.txBsCounter >= isoTpLink.txBlockSize) {
                 isoTpLink.txState = ISOTP_TX_WAIT_FC;
                 isoTpLink.txTimer = now;
                 return;
             }
 
+            // Send Consecutive Frame (CF)
             uint8_t frame_data[8];
             uint8_t seq_to_send = isoTpLink.txSeq;
-            if (fault_incorrect_sequence && (rand() % 4 == 0)) {
+            if (fault_incorrect_sequence && (rand() % 4 == 0)) { // Inject error sometimes
                 seq_to_send = (seq_to_send + 1 + (rand() % 3)) & 0x0F; 
             }
             
@@ -183,8 +177,9 @@ void isotp_poll() {
             uint8_t chunk = min((uint16_t)7, bytes_left);
             memcpy(&frame_data[1], &isoTpLink.txBuffer[isoTpLink.txBytesSent], chunk);
             
+            // Pad unused bytes
             for (int i = 1 + chunk; i < 8; i++) {
-                frame_data[i] = 0x00;
+                frame_data[i] = 0x00; // Padding 0x00 (більш сумісний)
             }
 
             isotp_send_can(isoTpLink.txId, frame_data, 8, isoTpLink.txExtended);
@@ -194,115 +189,71 @@ void isotp_poll() {
             isoTpLink.txBsCounter++;
             isoTpLink.txTimer = now;
 
+            // Fault: Stop sending after the first few frames
             if (fault_partial_vin && isoTpLink.txBytesSent > 7) {
-                isoTpLink.txState = ISOTP_IDLE;
+                isoTpLink.txState = ISOTP_IDLE; // Abort transmission silently
                 return;
             }
 
             if (isoTpLink.txBytesSent >= isoTpLink.txTotalLen) {
-                isoTpLink.txState = ISOTP_IDLE;
+                isoTpLink.txState = ISOTP_IDLE; // Transmission complete
             }
         }
     }
     else if (isoTpLink.txState == ISOTP_TX_WAIT_FC) {
+        // TX Timeout (N_Bs)
         if (now - isoTpLink.txTimer > ISOTP_TIMEOUT_MS) {
-            isoTpLink.txState = ISOTP_IDLE;
+            isoTpLink.txState = ISOTP_IDLE; // Timeout waiting for Flow Control
             Serial.println("ISO-TP TX Timeout (FC)");
         }
-    }
-
-    // --- Process TX Queue ---
-    // Якщо передавач вільний і є повідомлення в черзі, починаємо відправку наступного
-    if (isoTpLink.txState == ISOTP_IDLE && txQueueCount > 0) {
-        IsotpTxRequest* req = &txQueue[txQueueTail];
-        
-        isoTpLink.txId = req->id;
-        isoTpLink.txExtended = req->extended;
-        isoTpLink.txTotalLen = req->len;
-        memcpy(isoTpLink.txBuffer, req->data, req->len);
-
-        if (req->len <= 7) {
-            // Single Frame
-            uint8_t frame_data[8] = {0};
-            frame_data[0] = req->len;
-            memcpy(&frame_data[1], isoTpLink.txBuffer, req->len);
-            for (int i = 1 + req->len; i < 8; i++) frame_data[i] = 0x00; // Padding
-            
-            isotp_send_can(req->id, frame_data, 8, req->extended);
-            // State remains IDLE
-        } else {
-            // First Frame
-            uint8_t frame_data[8];
-            frame_data[0] = 0x10 | ((req->len >> 8) & 0x0F);
-            frame_data[1] = req->len & 0xFF;
-            memcpy(&frame_data[2], isoTpLink.txBuffer, 6);
-            
-            isotp_send_can(req->id, frame_data, 8, req->extended);
-            
-            isoTpLink.txBytesSent = 6;
-            isoTpLink.txSeq = 1;
-            isoTpLink.txState = ISOTP_TX_WAIT_FC;
-            isoTpLink.txTimer = millis();
-        }
-        
-        txQueueTail = (txQueueTail + 1) % 8;
-        txQueueCount--;
     }
 }
 
 bool isotp_send(uint32_t id, const uint8_t* data, uint16_t len, bool extended) {
-    if (len > ISOTP_MAX_DATA_LEN) return false;
+    if (isoTpLink.txState != ISOTP_IDLE) return false; // Transmitter is busy
 
-    // Якщо передавач вільний і черга пуста, відправляємо одразу
-    if (isoTpLink.txState == ISOTP_IDLE && txQueueCount == 0) {
-        isoTpLink.txId = id;
-        isoTpLink.txExtended = extended;
-        isoTpLink.txTotalLen = len;
-        memcpy(isoTpLink.txBuffer, data, len);
+    if (len > ISOTP_MAX_DATA_LEN) return false; // Message too long
+    
+    isoTpLink.txId = id;
+    isoTpLink.txExtended = extended;
+    isoTpLink.txTotalLen = len;
+    memcpy(isoTpLink.txBuffer, data, len);
 
-        if (len <= 7) {
-            uint8_t frame_data[8] = {0};
-            frame_data[0] = len;
-            memcpy(&frame_data[1], isoTpLink.txBuffer, len);
-            for (int i = 1 + len; i < 8; i++) frame_data[i] = 0x00;
-            
-            isotp_send_can(id, frame_data, 8, extended);
-            return true;
-        } else {
-            uint8_t frame_data[8];
-            frame_data[0] = 0x10 | ((len >> 8) & 0x0F);
-            frame_data[1] = len & 0xFF;
-            memcpy(&frame_data[2], isoTpLink.txBuffer, 6);
-            
-            isotp_send_can(id, frame_data, 8, extended);
-            
-            isoTpLink.txBytesSent = 6;
-            isoTpLink.txSeq = 1;
-            isoTpLink.txState = ISOTP_TX_WAIT_FC;
-            isoTpLink.txTimer = millis();
-            return true;
-        }
+    if (len <= 7) {
+        // Single Frame (SF)
+        uint8_t frame_data[8] = {0};
+        frame_data[0] = len;
+        memcpy(&frame_data[1], isoTpLink.txBuffer, len);
+        // Pad with a common value
+        for (int i = 1 + len; i < 8; i++) frame_data[i] = 0x00; // Padding 0x00
+        
+        isotp_send_can(id, frame_data, 8, extended);
+        // No state change needed, txState is already IDLE
     } else {
-        // Якщо зайнято - додаємо в чергу
-        if (txQueueCount >= 8) return false; // Черга переповнена
+        // First Frame (FF) of a multi-frame message
+        uint8_t frame_data[8];
+        frame_data[0] = 0x10 | ((len >> 8) & 0x0F);
+        frame_data[1] = len & 0xFF;
+        memcpy(&frame_data[2], isoTpLink.txBuffer, 6);
         
-        IsotpTxRequest* req = &txQueue[txQueueHead];
-        req->id = id;
-        req->len = len;
-        req->extended = extended;
-        memcpy(req->data, data, len);
+        isotp_send_can(id, frame_data, 8, extended);
         
-        txQueueHead = (txQueueHead + 1) % 8;
-        txQueueCount++;
-        return true;
+        isoTpLink.txBytesSent = 6;
+        isoTpLink.txSeq = 1;
+        isoTpLink.txState = ISOTP_TX_WAIT_FC;
+        isoTpLink.txTimer = millis();
     }
+    return true;
 }
 
 bool isotp_get_message(uint32_t* id, uint8_t* data, uint16_t* len) {
+    // This function is polled from the main loop to check for a completed message.
     if (isoTpLink.rxLen > 0 && isoTpLink.rxState == ISOTP_IDLE) {
         *id = isoTpLink.rxId;
         *len = isoTpLink.rxLen;
         memcpy(data, isoTpLink.rxBuffer, isoTpLink.rxLen);
+        
+        // Mark the message as consumed
         isoTpLink.rxLen = 0;
         return true;
     }

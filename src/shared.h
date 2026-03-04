@@ -37,9 +37,9 @@ struct ECU {
     char vin[18];
     char cal_id[17];
     char cvn[9];
-    char dtcs[5][6];
+    char dtcs[8][6];
     int num_dtcs;
-    char permanent_dtcs[5][6];
+    char permanent_dtcs[8][6];
     int num_permanent_dtcs;
     
     // Parameters

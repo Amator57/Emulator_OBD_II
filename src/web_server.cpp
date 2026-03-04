@@ -142,6 +142,12 @@ String getJsonState() {
     for (int i = 0; i < ecus[0].num_dtcs; i++) {
         dtcs_array.add(ecus[0].dtcs[i]);
     }
+    for (int i = 0; i < ecus[2].num_dtcs; i++) {
+        dtcs_array.add(ecus[2].dtcs[i]);
+    }
+    for (int i = 0; i < ecus[3].num_dtcs; i++) {
+        dtcs_array.add(ecus[3].dtcs[i]);
+    }
     
     String output;
     serializeJson(doc, output);
@@ -278,13 +284,25 @@ void setupWebServer() {
 
     if(request->hasParam("dtc_list")) {
         String dtcs = request->getParam("dtc_list")->value();
-        ecus[0].num_dtcs = 0; // Очищаємо список перед оновленням
+        
+        // Очищаємо помилки у всіх блоках перед оновленням, щоб уникнути дублювання та "фантомних" кодів
+        for(int i=0; i<4; i++) {
+            ecus[i].num_dtcs = 0;
+            ecus[i].num_permanent_dtcs = 0;
+            ecus[i].freezeFrameSet = false;
+        }
+
         int start = 0;
         while(start < dtcs.length()) {
             int comma = dtcs.indexOf(',', start);
             String token = (comma == -1) ? dtcs.substring(start) : dtcs.substring(start, comma);
             token.trim();
-            if(token.length() > 0) addDTC(ecus[0], token.c_str());
+            if(token.length() > 0) {
+                char prefix = toupper(token[0]);
+                if (prefix == 'C') addDTC(ecus[2], token.c_str());      // Chassis -> ABS
+                else if (prefix == 'B') addDTC(ecus[3], token.c_str()); // Body -> SRS
+                else addDTC(ecus[0], token.c_str());                    // P, U та інші -> ECM
+            }
             if(comma == -1) break;
             start = comma + 1;
         }

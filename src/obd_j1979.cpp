@@ -2,6 +2,7 @@
 
 extern int frame_delay_ms;
 extern int error_injection_rate;
+extern EmulatorMode emulatorMode;
 
 // Forward declarations
 void sendCurrentData(ECU &ecu, byte pid, bool use29bit);
@@ -34,6 +35,10 @@ void handleOBDRequest(uint32_t id, const uint8_t* data, uint16_t len) {
     // Determine mode from ID (simplified, assuming ID passed is correct)
     bool is29Bit = (id > 0x7FF);
     bool is11Bit = !is29Bit;
+
+    // Enforce Emulator Mode
+    if (emulatorMode == MODE_OBD_11BIT && is29Bit) return;
+    if (emulatorMode == MODE_UDS_29BIT && is11Bit) return;
 
     // Filter based on Mode
     // (Filtering already done mostly by main loop, but good to keep)
@@ -502,9 +507,9 @@ void sendFreezeFrameData(ECU &ecu, byte pid, bool use29bit) {
 void sendDTCs(ECU &ecu, bool use29bit) {
     if (frame_delay_ms > 0) delay(frame_delay_ms);
 
-    byte dtc_bytes[10];
+    byte dtc_bytes[16];
     int byte_count = 0;
-    for(int i=0; i<ecu.num_dtcs && i < 5; i++) {
+    for(int i=0; i<ecu.num_dtcs && i < 8; i++) {
         // Використовуємо strtol з базою 16 для коректного парсингу HEX-частини коду DTC
         uint16_t code = strtol(&ecu.dtcs[i][1], NULL, 16);
         if (ecu.dtcs[i][0] == 'C') code |= 0x4000;
@@ -526,9 +531,9 @@ void sendPendingDTCs(ECU &ecu, bool use29bit) {
     if (frame_delay_ms > 0) delay(frame_delay_ms);
 
     // For simulation, we assume Pending DTCs are the same as Current DTCs
-    byte dtc_bytes[10];
+    byte dtc_bytes[16];
     int byte_count = 0;
-    for(int i=0; i<ecu.num_dtcs && i < 5; i++) {
+    for(int i=0; i<ecu.num_dtcs && i < 8; i++) {
         // Використовуємо strtol з базою 16 для коректного парсингу HEX-частини коду DTC
         uint16_t code = strtol(&ecu.dtcs[i][1], NULL, 16);
         if (ecu.dtcs[i][0] == 'C') code |= 0x4000;
@@ -548,14 +553,14 @@ void sendPendingDTCs(ECU &ecu, bool use29bit) {
 
 void clearDTCs(ECU &ecu, bool use29bit, bool sendResponse) {
     ecu.num_dtcs = 0;
-    for(int i=0; i<5; i++) ecu.dtcs[i][0] = '\0';
+    for(int i=0; i<8; i++) ecu.dtcs[i][0] = '\0';
     ecu.freezeFrameSet = false;
     ecu.distance_with_mil = 0;
 
     // Також очищуємо постійні DTC (Mode 0A) та скидаємо лічильник циклів водіння,
     // щоб поведінка відповідала очікуванням.
     ecu.num_permanent_dtcs = 0;
-    for(int i=0; i<5; i++) ecu.permanent_dtcs[i][0] = '\0';
+    for(int i=0; i<8; i++) ecu.permanent_dtcs[i][0] = '\0';
     ecu.error_free_cycles = 0;
 
     if (sendResponse) {
@@ -645,9 +650,9 @@ void sendCvn(ECU &ecu, byte pid, bool use29bit) {
 void sendPermanentDTCs(ECU &ecu, bool use29bit) {
     if (frame_delay_ms > 0) delay(frame_delay_ms);
 
-    byte dtc_bytes[10];
+    byte dtc_bytes[16];
     int byte_count = 0;
-    for(int i=0; i<ecu.num_permanent_dtcs && i < 5; i++) {
+    for(int i=0; i<ecu.num_permanent_dtcs && i < 8; i++) {
         // Використовуємо strtol з базою 16 для коректного парсингу HEX-частини коду DTC
         uint16_t code = strtol(&ecu.permanent_dtcs[i][1], NULL, 16);
         if (ecu.permanent_dtcs[i][0] == 'C') code |= 0x4000;

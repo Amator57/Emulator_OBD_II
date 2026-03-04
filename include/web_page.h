@@ -84,6 +84,15 @@ const char index_html[] PROGMEM = R"rawliteral(
         <form id="updateForm" action="/update" method="get">
             <div id="page-general" class="page-content">
                 <h2>General Settings</h2>
+                <div style="margin-bottom: 15px; padding: 10px; background-color: #f3e5f5; border-radius: 8px; border: 1px solid #ce93d8;">
+                    <label for="can_mode_select" style="margin-top: 0;">CAN Protocol & Bitrate:</label>
+                    <select id="can_mode_select" onchange="updateCanMode(this)" style="width: 100%; padding: 8px; margin-top: 5px; border-radius: 4px;">
+                        <option value="1_500000">ISO 15765-4 CAN (11-bit ID, 500 kbaud)</option>
+                        <option value="2_500000">ISO 15765-4 CAN (29-bit ID, 500 kbaud)</option>
+                        <option value="1_250000">ISO 15765-4 CAN (11-bit ID, 250 kbaud)</option>
+                        <option value="2_250000">ISO 15765-4 CAN (29-bit ID, 250 kbaud)</option>
+                    </select>
+                </div>
                 <div style="margin-bottom: 15px; padding: 10px; background-color: #e3f2fd; border-radius: 8px; border: 1px solid #90caf9;">
                     <label style="display: flex; align-items: center;">
                         <label class="switch">
@@ -114,38 +123,37 @@ const char index_html[] PROGMEM = R"rawliteral(
                 
                 <h3>ECU Control</h3>
                 <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 10px; margin-bottom: 15px;">
-                    <label style="display: flex; align-items: center;">
-                        <label class="switch">
+                    <label style="display: flex; flex-direction: column; align-items: center; text-align: center;">
+                        <span style="min-height: 40px; display: flex; align-items: center; justify-content: center;">Enable ECM (Engine)</span>
+                        <label class="switch" style="margin-top: 5px;">
                             <input type="checkbox" id="ecu0_en" name="ecu0_en" checked>
                             <span class="slider"></span>
                         </label>
-                        <span>Enable ECM (Engine)</span>
                     </label>
-                    <label style="display: flex; align-items: center;">
-                        <label class="switch">
+                    <label style="display: flex; flex-direction: column; align-items: center; text-align: center;">
+                        <span style="min-height: 40px; display: flex; align-items: center; justify-content: center;">Enable TCM (Trans)</span>
+                        <label class="switch" style="margin-top: 5px;">
                             <input type="checkbox" id="ecu1_en" name="ecu1_en" checked>
                             <span class="slider"></span>
                         </label>
-                        <span>Enable TCM (Trans)</span>
                     </label>
-                    <label style="display: flex; align-items: center;">
-                        <label class="switch">
+                    <label style="display: flex; flex-direction: column; align-items: center; text-align: center;">
+                        <span style="min-height: 40px; display: flex; align-items: center; justify-content: center;">Enable ABS</span>
+                        <label class="switch" style="margin-top: 5px;">
                             <input type="checkbox" id="ecu2_en" name="ecu2_en" checked>
                             <span class="slider"></span>
                         </label>
-                        <span>Enable ABS</span>
                     </label>
-                    <label style="display: flex; align-items: center;">
-                        <label class="switch">
+                    <label style="display: flex; flex-direction: column; align-items: center; text-align: center;">
+                        <span style="min-height: 40px; display: flex; align-items: center; justify-content: center;">Enable SRS</span>
+                        <label class="switch" style="margin-top: 5px;">
                             <input type="checkbox" id="ecu3_en" name="ecu3_en" checked>
                             <span class="slider"></span>
                         </label>
-                        <span>Enable SRS</span>
                     </label>
                 </div>
 
                 <input type="submit" id="submitBtn" value="Update Emulator Data">
-                <button type="button" class="button-blue" onclick="updateAndShow(0)">Apply Changes</button>
                 <button type="button" id="cycleBtn" class="button-blue">Simulate Driving Cycle</button>
                 <div id="status" style="margin-top: 15px; font-weight: bold; text-align: center; min-height: 1.2em;"></div>
 
@@ -696,14 +704,21 @@ const char index_html[] PROGMEM = R"rawliteral(
                 inputs.forEach(el => {
                     if (el.name && !el.disabled) {
                         if (el.type === 'checkbox' || el.type === 'radio') {
-                            if (el.checked) params.append(el.name, el.value);
+                            // Надсилаємо 'true'/'false' для всіх чекбоксів на активній вкладці
+                            params.append(el.name, el.checked ? 'true' : 'false');
                         } else {
                             params.append(el.name, el.value);
                         }
                     }
                 });
             }
-
+            
+            // Завжди додаємо стан перемикачів ECU, щоб він не скидався при оновленні з інших вкладок
+            params.set('ecu0_en', document.getElementById('ecu0_en').checked ? 'true' : 'false');
+            params.set('ecu1_en', document.getElementById('ecu1_en').checked ? 'true' : 'false');
+            params.set('ecu2_en', document.getElementById('ecu2_en').checked ? 'true' : 'false');
+            params.set('ecu3_en', document.getElementById('ecu3_en').checked ? 'true' : 'false');
+            
             params.append('page', pageIndex);
             
             const url = form.action + '?' + params.toString();
@@ -744,6 +759,12 @@ const char index_html[] PROGMEM = R"rawliteral(
                     params.append(pair[0], pair[1]);
                 }
             }
+
+            // Явно встановлюємо значення для всіх перемикачів ECU, щоб відправити 'true' або 'false'
+            params.set('ecu0_en', document.getElementById('ecu0_en').checked ? 'true' : 'false');
+            params.set('ecu1_en', document.getElementById('ecu1_en').checked ? 'true' : 'false');
+            params.set('ecu2_en', document.getElementById('ecu2_en').checked ? 'true' : 'false');
+            params.set('ecu3_en', document.getElementById('ecu3_en').checked ? 'true' : 'false');
             
             const url = form.action + '?' + params.toString();
 
@@ -770,6 +791,21 @@ const char index_html[] PROGMEM = R"rawliteral(
                     setTimeout(() => { statusDiv.textContent = ''; }, 5000); // Очистити статус через 5 секунд
                 });
         });
+
+        function updateCanMode(select) {
+            const parts = select.value.split('_');
+            const mode = parts[0];
+            const bitrate = parts[1];
+            select.disabled = true;
+            fetch('/update?mode=' + mode + '&bitrate=' + bitrate)
+                .then(response => response.text())
+                .then(data => {
+                    document.getElementById('status').textContent = 'CAN Mode Updated. Re-initializing...';
+                    document.getElementById('status').style.color = 'blue';
+                    setTimeout(() => { document.getElementById('status').textContent = ''; select.disabled = false; }, 2000);
+                })
+                .catch(err => { select.disabled = false; });
+        }
 
         function toggleDynamicRPM(cb) {
             setSimulationMode(cb.checked);
@@ -983,7 +1019,7 @@ const char index_html[] PROGMEM = R"rawliteral(
         function addDtc() {
             const newDtc = currentDtc.join('');
             if (injectedDtcs.includes(newDtc)) { alert('DTC ' + newDtc + ' is already in the list.'); return; }
-            if (injectedDtcs.length >= 5) { alert('Maximum number of DTCs (5) reached.'); return; }
+            if (injectedDtcs.length >= 8) { alert('Maximum number of DTCs (8) reached.'); return; }
             injectedDtcs.push(newDtc);
             renderDtcList();
         }
@@ -1157,6 +1193,14 @@ const char index_html[] PROGMEM = R"rawliteral(
 
             if (data.lean_mixture_sim !== undefined) {
                 document.getElementById('lean_mixture_sim_check').checked = data.lean_mixture_sim;
+            }
+
+            if (data.mode !== undefined && data.bitrate !== undefined) {
+                const val = data.mode + '_' + data.bitrate;
+                const select = document.getElementById('can_mode_select');
+                if (select && document.activeElement !== select) {
+                    select.value = val;
+                }
             }
             
             if (data.dynamic_rpm !== undefined) {

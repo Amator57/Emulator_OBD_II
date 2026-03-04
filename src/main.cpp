@@ -507,7 +507,7 @@ bool addDTC(ECU &ecu, const char* new_dtc) {
     bool added_to_permanent = false;
 
     // Додаємо до поточних DTC, якщо є місце і код ще не існує
-    if (ecu.num_dtcs < 5) {
+    if (ecu.num_dtcs < 8) {
         bool exists = false;
         for (int i = 0; i < ecu.num_dtcs; i++) {
             if (strcmp(ecu.dtcs[i], new_dtc) == 0) {
@@ -524,7 +524,7 @@ bool addDTC(ECU &ecu, const char* new_dtc) {
     }
 
     // Додаємо до постійних DTC, якщо є місце і код ще не існує
-    if (ecu.num_permanent_dtcs < 5) {
+    if (ecu.num_permanent_dtcs < 8) {
         bool exists = false;
         for (int i = 0; i < ecu.num_permanent_dtcs; i++) {
             if (strcmp(ecu.permanent_dtcs[i], new_dtc) == 0) {
@@ -559,6 +559,39 @@ bool addDTC(ECU &ecu, const char* new_dtc) {
 
 void completeDrivingCycle(ECU &ecu, bool use29bit) {
     Serial.println("Simulating Driving Cycle...");
+    bool dtc_added_this_cycle = false;
+
+    // --- Part 1: Simulate high RPM/load conditions to trigger faults ---
+    if (misfire_simulation_enabled || lean_mixture_simulation_enabled) {
+        int original_rpm = ecu.engine_rpm;
+        int original_fuel_pressure = ecu.fuel_pressure;
+        
+        Serial.println("  - Simulating high load phase to check for faults...");
+        ecu.engine_rpm = 4000; // Temporarily set high RPM to trigger simulations
+
+        if (misfire_simulation_enabled) {
+            if (addDTC(ecu, "P0300")) {
+                Serial.println("    -> Misfire simulation triggered P0300.");
+                dtc_added_this_cycle = true;
+            }
+        }
+
+        if (lean_mixture_simulation_enabled) {
+            ecu.fuel_pressure = 150 + (rand() % 30); // Simulate low pressure
+            if (addDTC(ecu, "P0171")) {
+                Serial.println("    -> Lean mixture simulation triggered P0171.");
+                dtc_added_this_cycle = true;
+            }
+        }
+
+        // Restore original values
+        ecu.engine_rpm = original_rpm;
+        ecu.fuel_pressure = original_fuel_pressure;
+        Serial.println("  - High load phase finished.");
+    }
+
+    // --- Part 2: Original logic for clearing permanent DTCs ---
+    // This part runs if no DTCs were present *before* this cycle and none were added *during* this cycle.
     if (ecu.num_dtcs == 0) {
         ecu.error_free_cycles++;
         Serial.printf("  No current DTCs. Error-free cycles: %d/%d\n", ecu.error_free_cycles, CYCLES_THRESHOLD);
@@ -566,15 +599,16 @@ void completeDrivingCycle(ECU &ecu, bool use29bit) {
         if (ecu.error_free_cycles >= CYCLES_THRESHOLD) {
             if (ecu.num_permanent_dtcs > 0) {
                 ecu.num_permanent_dtcs = 0;
-                for(int i=0; i<5; i++) ecu.permanent_dtcs[i][0] = '\0';
+                for(int i=0; i<8; i++) ecu.permanent_dtcs[i][0] = '\0';
                 Serial.println("  Threshold reached! Permanent DTCs cleared.");
             }
-            // Скидаємо лічильник після успішного очищення (або можна залишити, щоб показувати "здоров'я")
-            // ecu.error_free_cycles = 0; 
         }
     } else {
-        ecu.error_free_cycles = 0;
-        Serial.println("  Current DTCs present. Error-free cycles counter reset to 0.");
+        // If DTCs were present before this cycle, reset the counter.
+        if (!dtc_added_this_cycle) {
+            ecu.error_free_cycles = 0;
+            Serial.println("  Current DTCs were present. Error-free cycles counter reset to 0.");
+        }
     }
     notifyClients();
 }
@@ -657,6 +691,12 @@ String getJsonConfig() {
     JsonArray dtcs_array = doc.createNestedArray("dtcs");
     for (int i = 0; i < ecus[0].num_dtcs; i++) {
         dtcs_array.add(ecus[0].dtcs[i]);
+    }
+    for (int i = 0; i < ecus[2].num_dtcs; i++) {
+        dtcs_array.add(ecus[2].dtcs[i]);
+    }
+    for (int i = 0; i < ecus[3].num_dtcs; i++) {
+        dtcs_array.add(ecus[3].dtcs[i]);
     }
 
     String output;
@@ -754,13 +794,20 @@ void parseJsonConfig(String &json_buffer) {
     ecus[0].freezeFrame.fuel_pressure = doc["ff_pres"] | ecus[0].freezeFrame.fuel_pressure;
 
     // Clear existing DTCs before loading new ones
-    clearDTCs(ecus[0], false, false); // Не відправляємо CAN-відповідь при завантаженні конфігу
+    for(int i=0; i<4; i++) {
+        clearDTCs(ecus[i], false, false);
+    }
 
     if (doc.containsKey("dtcs")) {
         JsonArray dtcs_array = doc["dtcs"].as<JsonArray>();
         for(JsonVariant v : dtcs_array) {
             const char* dtc_str = v.as<const char*>();
-            addDTC(ecus[0], dtc_str); // Use addDTC to correctly set freeze frame
+            if (strlen(dtc_str) > 0) {
+                char prefix = toupper(dtc_str[0]);
+                if (prefix == 'C') addDTC(ecus[2], dtc_str);
+                else if (prefix == 'B') addDTC(ecus[3], dtc_str);
+                else addDTC(ecus[0], dtc_str);
+            }
         }
     }
 
@@ -854,10 +901,16 @@ void saveConfig() {
     // Save DTCs as a string
     String dtcString = "";
     for (int i = 0; i < ecus[0].num_dtcs; i++) {
+        if (dtcString.length() > 0) dtcString += ",";
         dtcString += ecus[0].dtcs[i];
-        if (i < ecus[0].num_dtcs - 1) {
-            dtcString += ",";
-        }
+    }
+    for (int i = 0; i < ecus[2].num_dtcs; i++) {
+        if (dtcString.length() > 0) dtcString += ",";
+        dtcString += ecus[2].dtcs[i];
+    }
+    for (int i = 0; i < ecus[3].num_dtcs; i++) {
+        if (dtcString.length() > 0) dtcString += ",";
+        dtcString += ecus[3].dtcs[i];
     }
     preferences.putString("dtcs", dtcString);
 
@@ -957,11 +1010,13 @@ void loadConfig() {
 
     // Load and parse DTCs
     String dtcString = preferences.getString("dtcs", "");
-    ecus[0].num_dtcs = 0; // Reset before loading
+    for(int i=0; i<4; i++) {
+        ecus[i].num_dtcs = 0; // Reset before loading
+    }
     ecus[0].freezeFrameSet = false;
     if (dtcString.length() > 0) {
         int start = 0;
-        while(ecus[0].num_dtcs < 5){
+        while(start < dtcString.length()){
             int comma = dtcString.indexOf(',', start);
             String token;
             if(comma == -1) {
@@ -971,16 +1026,21 @@ void loadConfig() {
             }
             token.trim();
             if(token.length() == 5){
-                addDTC(ecus[0], token.c_str()); // This will also set freeze frame if it's the first DTC
+                char prefix = toupper(token[0]);
+                if (prefix == 'C') addDTC(ecus[2], token.c_str());
+                else if (prefix == 'B') addDTC(ecus[3], token.c_str());
+                else addDTC(ecus[0], token.c_str());
             }
             if(comma == -1) break;
             start = comma + 1;
         }
     }
     // Sync permanent DTCs on load
-    ecus[0].num_permanent_dtcs = ecus[0].num_dtcs;
-    for(int i=0; i<ecus[0].num_dtcs; i++) {
-        strcpy(ecus[0].permanent_dtcs[i], ecus[0].dtcs[i]);
+    for(int j=0; j<4; j++) {
+        ecus[j].num_permanent_dtcs = ecus[j].num_dtcs;
+        for(int i=0; i<ecus[j].num_dtcs; i++) {
+            strcpy(ecus[j].permanent_dtcs[i], ecus[j].dtcs[i]);
+        }
     }
 
     // --- TCM Data (ecus[1]) ---
