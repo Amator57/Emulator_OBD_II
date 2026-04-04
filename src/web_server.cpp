@@ -344,7 +344,7 @@ void setupWebServer() {
     }
 
     simulation_running = true; // Вмикаємо обмін зі сканером при натисканні Update Display
-    need_display_update = true; // Запитуємо оновлення дисплея в main loop
+    // need_display_update = true; // Вимкнено, щоб фіксувати початковий екран
     
     need_websocket_update = true; // Запитуємо оновлення WebSocket в main loop
     
@@ -367,7 +367,7 @@ void setupWebServer() {
     xSemaphoreGive(configMutex);
     }
     request->send(200, "text/plain", "Cycle Completed");
-    need_display_update = true;
+    // need_display_update = true; // Вимкнено для фіксації початкового екрану
   });
 
   server.on("/save_nvs", HTTP_GET, [] (AsyncWebServerRequest *request) {
