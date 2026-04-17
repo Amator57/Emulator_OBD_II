@@ -1,12 +1,13 @@
-Структура для ESP32
+// Структура для ESP32
+
 typedef struct {
     const char* code;
     const char* description;
 } DTC;
 
+// Таблиця стандартних OBD-II P0xxx
+#include <stdint.h>
 
-
-Таблиця стандартних OBD-II P0xxx
 const DTC dtc_table[] = {
 
 {"P0001","Fuel Volume Regulator Control Circuit/Open"},
@@ -155,45 +156,43 @@ const DTC dtc_table[] = {
 
 };
 
-Кількість кодів
+// Кількість кодів: ~120 найпоширеніших DTC, які покривають двигун, паливну систему, 
+// запалювання, вихлоп, EVAP, трансмісію, ECU. Це повністю достатньо для реалістичного емулятора.
 
-У таблиці зараз ~120 найпоширеніших DTC, які покривають:
+#include "shared.h"
+#include <driver/twai.h>
+#include <string.h>
+#include <ctype.h>
+#include <stdlib.h>
 
-двигун
+// Допоміжна функція для конвертації рядка "P0101" у 2-байтний формат OBD-II
+static uint16_t dtcToHex(const char* s) {
+    if (!s || strlen(s) < 5) return 0;
+    uint16_t res = (uint16_t)strtol(s + 1, NULL, 16); // Конвертуємо останні 4 цифри
+    char prefix = toupper((unsigned char)s[0]);
+    if (prefix == 'C') res |= 0x4000;      // Chassis
+    else if (prefix == 'B') res |= 0x8000; // Body
+    else if (prefix == 'U') res |= 0xC000; // Network
+    return res;
+}
 
-паливну систему
+// Приклад використання в Mode 03
+void sendDTC(const struct ECU *ecu) {
+    if (ecu->num_dtcs == 0) {
+        uint8_t no_dtc[3] = {0x43, 0x00, 0x00};
+        isotp_send(ecu->canId + 8, no_dtc, 3, false);
+        return;
+    }
 
-запалювання
+    uint8_t response[1 + (ISOTP_MAX_DATA_LEN)]; 
+    response[0] = 0x43; // Service 03 Response
+    
+    for (int i = 0; i < ecu->num_dtcs; i++) {
+        uint16_t hexCode = dtcToHex(ecu->dtcs[i]);
+        response[1 + (i * 2)] = (hexCode >> 8) & 0xFF;
+        response[2 + (i * 2)] = hexCode & 0xFF;
+    }
 
-вихлоп
-
-EVAP
-
-трансмісію
-
-ECU
-
-Це повністю достатньо для реалістичного емулятора.
-
-Приклад використання в Mode 03
-void sendDTC() {
-
-CAN_frame_t tx;
-
-tx.MsgID = 0x7E8;
-tx.DLC = 8;
-
-tx.data.u8[0] = 0x04;
-tx.data.u8[1] = 0x43;
-
-tx.data.u8[2] = 0x01;  // P0301
-tx.data.u8[3] = 0x01;
-
-tx.data.u8[4] = 0x01;  // P0171
-tx.data.u8[5] = 0x71;
-
-tx.data.u8[6] = 0x00;
-tx.data.u8[7] = 0x00;
-
-ESP32Can.CANWriteFrame(&tx);
+    // Використовуємо чергу ISO-TP для надійної відправки (зокрема Multi-frame)
+    isotp_send(ecu->canId + 8, response, 1 + (ecu->num_dtcs * 2), false);
 }

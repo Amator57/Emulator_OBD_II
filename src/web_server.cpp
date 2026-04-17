@@ -139,14 +139,19 @@ String getJsonState() {
     }
     
     JsonArray dtcs_array = doc.createNestedArray("dtcs");
-    for (int i = 0; i < ecus[0].num_dtcs; i++) {
-        dtcs_array.add(ecus[0].dtcs[i]);
-    }
-    for (int i = 0; i < ecus[2].num_dtcs; i++) {
-        dtcs_array.add(ecus[2].dtcs[i]);
-    }
-    for (int i = 0; i < ecus[3].num_dtcs; i++) {
-        dtcs_array.add(ecus[3].dtcs[i]);
+    // Збираємо унікальні коди зі всіх блоків для відображення в UI
+    for (int ecu_idx = 0; ecu_idx < NUM_ECUS; ecu_idx++) {
+        for (int i = 0; i < ecus[ecu_idx].num_dtcs; i++) {
+            const char* code = ecus[ecu_idx].dtcs[i];
+            bool already_exists = false;
+            for (size_t j = 0; j < dtcs_array.size(); j++) {
+                if (strcmp(dtcs_array[j].as<const char*>(), code) == 0) {
+                    already_exists = true;
+                    break;
+                }
+            }
+            if (!already_exists) dtcs_array.add(code);
+        }
     }
     
     String output;
@@ -298,10 +303,12 @@ void setupWebServer() {
             String token = (comma == -1) ? dtcs.substring(start) : dtcs.substring(start, comma);
             token.trim();
             if(token.length() > 0) {
+                // Додаємо всі коди до основного блоку ECM для загальної видимості сканерами
+                addDTC(ecus[0], token.c_str());
+                
                 char prefix = toupper(token[0]);
-                if (prefix == 'C') addDTC(ecus[2], token.c_str());      // Chassis -> ABS
-                else if (prefix == 'B') addDTC(ecus[3], token.c_str()); // Body -> SRS
-                else addDTC(ecus[0], token.c_str());                    // P, U та інші -> ECM
+                if (prefix == 'C') addDTC(ecus[2], token.c_str());      // Також дублюємо в ABS
+                else if (prefix == 'B') addDTC(ecus[3], token.c_str()); // Також дублюємо в SRS
             }
             if(comma == -1) break;
             start = comma + 1;
@@ -350,7 +357,7 @@ void setupWebServer() {
     
     xSemaphoreGive(configMutex);
     }
-    request->send(200, "text/plain", "Updated");
+    request->send(200, "application/json", getJsonState()); // Повертаємо повний стан як JSON
   });
 
   server.on("/clear_dtc", HTTP_GET, [] (AsyncWebServerRequest *request) {

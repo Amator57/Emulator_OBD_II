@@ -11,7 +11,7 @@ struct IsotpTxRequest {
     bool extended;
 };
 
-static IsotpTxRequest txQueue[8]; // Черга на 8 повідомлень
+static IsotpTxRequest txQueue[16]; // Збільшено для мульти-ЕБУ середовища
 static int txQueueHead = 0;
 static int txQueueTail = 0;
 static int txQueueCount = 0;

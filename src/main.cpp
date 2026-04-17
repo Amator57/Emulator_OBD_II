@@ -114,11 +114,16 @@ void setup() {
   tft.initR(INITR_BLACKTAB); // або INITR_GREENTAB, INITR_REDTAB
   tft.fillScreen(ST7735_BLACK);
   tft.setRotation(1); // Горизонтальна орієнтація
-  tft.setCursor(DISPLAY_TEXT_OFFSET_X, DISPLAY_TEXT_OFFSET_Y);
   tft.setTextColor(ST7735_WHITE);
   tft.setTextSize(1);
+  
+  int boot_y = DISPLAY_TEXT_OFFSET_Y;
+  tft.setCursor(DISPLAY_TEXT_OFFSET_X, boot_y);
   tft.println("OBD-II Emulator-A");
+  boot_y += 10;
+  tft.setCursor(DISPLAY_TEXT_OFFSET_X, boot_y);
   tft.println("Starting...");
+  boot_y += 10;
 
   // --- Налаштування CAN ---
   // Ініціалізуємо CAN перед Wi-Fi, щоб емулятор міг відповідати сканеру, поки йде підключення до мережі
@@ -130,7 +135,9 @@ void setup() {
   bool connected = false;
   if (wifi_ssid.length() > 0) {
       Serial.printf("Connecting to WiFi: %s\n", wifi_ssid.c_str());
+      tft.setCursor(DISPLAY_TEXT_OFFSET_X, boot_y);
       tft.println("Connecting WiFi...");
+      boot_y += 10;
       WiFi.mode(WIFI_STA);
       WiFi.setSleep(false); // Вимикаємо режим сну Wi-Fi, щоб уникнути проблем з CAN
       WiFi.begin(wifi_ssid.c_str(), wifi_password.c_str());
@@ -157,9 +164,13 @@ void setup() {
           connected = true;
           Serial.println("\nWiFi Connected!");
           Serial.print("IP: "); Serial.println(WiFi.localIP());
+          tft.setCursor(DISPLAY_TEXT_OFFSET_X, boot_y);
           tft.println("Mode: STA");
-          tft.print("IP: "); 
+          boot_y += 10;
+          tft.setCursor(DISPLAY_TEXT_OFFSET_X, boot_y);
+          tft.print("IP: ");
           tft.println(WiFi.localIP());
+          boot_y += 10;
       } else {
           Serial.println("\nConnection failed. Falling back to AP mode.");
       }
@@ -171,8 +182,12 @@ void setup() {
       WiFi.softAP(ap_ssid, ap_password);
       IPAddress ip = WiFi.softAPIP();
       Serial.print(" AP IP: "); Serial.println(ip);
+      tft.setCursor(DISPLAY_TEXT_OFFSET_X, boot_y);
       tft.println("Mode: AP");
+      boot_y += 10;
+      tft.setCursor(DISPLAY_TEXT_OFFSET_X, boot_y);
       tft.print("AP IP: "); tft.println(ip);
+      boot_y += 10;
   }
 
   setupWebServer();
@@ -771,17 +786,15 @@ void saveConfig() {
 
     // Save DTCs as a string
     String dtcString = "";
-    for (int i = 0; i < ecus[0].num_dtcs; i++) {
-        if (dtcString.length() > 0) dtcString += ",";
-        dtcString += ecus[0].dtcs[i];
-    }
-    for (int i = 0; i < ecus[2].num_dtcs; i++) {
-        if (dtcString.length() > 0) dtcString += ",";
-        dtcString += ecus[2].dtcs[i];
-    }
-    for (int i = 0; i < ecus[3].num_dtcs; i++) {
-        if (dtcString.length() > 0) dtcString += ",";
-        dtcString += ecus[3].dtcs[i];
+    for (int ecu_idx = 0; ecu_idx < NUM_ECUS; ecu_idx++) {
+        for (int i = 0; i < ecus[ecu_idx].num_dtcs; i++) {
+            const char* code = ecus[ecu_idx].dtcs[i];
+            // Перевіряємо чи код вже є у рядку перед додаванням
+            if (dtcString.indexOf(code) == -1) {
+                if (dtcString.length() > 0) dtcString += ",";
+                dtcString += code;
+            }
+        }
     }
     preferences.putString("dtcs", dtcString);
 
@@ -897,10 +910,11 @@ void loadConfig() {
             }
             token.trim();
             if(token.length() == 5){
+                addDTC(ecus[0], token.c_str());
+                
                 char prefix = toupper(token[0]);
                 if (prefix == 'C') addDTC(ecus[2], token.c_str());
                 else if (prefix == 'B') addDTC(ecus[3], token.c_str());
-                else addDTC(ecus[0], token.c_str());
             }
             if(comma == -1) break;
             start = comma + 1;

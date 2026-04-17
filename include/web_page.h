@@ -53,6 +53,13 @@ const char index_html[] PROGMEM = R"rawliteral(
         #dtc-list-ui { list-style: none; padding: 0; margin-top: 10px; }
         #dtc-list-ui li { background: #eee; padding: 8px; margin-bottom: 5px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; font-family: monospace; }
         #dtc-list-ui .remove-dtc { background: #f44336; color: white; border: none; border-radius: 50%; cursor: pointer; width: 24px; height: 24px; line-height: 24px; text-align: center; font-weight: bold; }
+        .flash-success {
+            animation: flash-green 1s ease-out;
+        }
+        @keyframes flash-green {
+            0% { background-color: #d4edda; }
+            100% { background-color: transparent; }
+        }
     </style>
 </head>
 <body>
@@ -726,10 +733,19 @@ const char index_html[] PROGMEM = R"rawliteral(
             statusDiv.textContent = 'Applying changes...';
             
             fetch(url)
-                .then(response => response.text())
+                .then(response => response.json()) // Очікуємо JSON-відповідь
                 .then(data => {
-                    statusDiv.textContent = 'Changes Applied';
+                    // Візуальна фіксація: змінюємо текст статусу на більш конкретний
+                    statusDiv.textContent = (pageIndex === 6) ? 'DTCs Successfully Applied' : 'Changes Applied';
                     statusDiv.style.color = 'green';
+                    onMessage({data: JSON.stringify(data)}); // Симулюємо повідомлення WebSocket для оновлення UI
+                    
+                    // Додаємо ефект "миготіння" для списку помилок
+                    if (pageIndex === 6) {
+                        const container = document.getElementById('dtc-list-container');
+                        container.classList.add('flash-success');
+                        setTimeout(() => container.classList.remove('flash-success'), 1000);
+                    }
                 })
                 .catch(error => {
                     statusDiv.textContent = 'Error applying changes';
