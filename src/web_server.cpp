@@ -142,7 +142,7 @@ String getJsonState() {
     // Збираємо унікальні коди зі всіх блоків для відображення в UI
     for (int ecu_idx = 0; ecu_idx < NUM_ECUS; ecu_idx++) {
         for (int i = 0; i < ecus[ecu_idx].num_dtcs; i++) {
-            const char* code = ecus[ecu_idx].dtcs[i];
+            const char* code = ecus[ecu_idx].dtcs[i]; // Assuming dtcs[i] is a char array
             bool already_exists = false;
             for (size_t j = 0; j < dtcs_array.size(); j++) {
                 if (strcmp(dtcs_array[j].as<const char*>(), code) == 0) {
@@ -292,7 +292,7 @@ void setupWebServer() {
         
         // Очищаємо помилки у всіх блоках перед оновленням, щоб уникнути дублювання та "фантомних" кодів
         for(int i=0; i<4; i++) {
-            ecus[i].num_dtcs = 0;
+            ecus[i].num_dtcs = 0; // Reset current DTCs
             ecus[i].num_permanent_dtcs = 0;
             ecus[i].freezeFrameSet = false;
         }

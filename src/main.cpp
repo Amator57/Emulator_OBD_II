@@ -393,7 +393,7 @@ bool addDTC(ECU &ecu, const char* new_dtc) {
     bool added_to_permanent = false;
 
     // Додаємо до поточних DTC, якщо є місце і код ще не існує
-    if (ecu.num_dtcs < 8) {
+    if (ecu.num_dtcs < MAX_DTCS_PER_ECU) {
         bool exists = false;
         for (int i = 0; i < ecu.num_dtcs; i++) {
             if (strcmp(ecu.dtcs[i], new_dtc) == 0) {
@@ -403,14 +403,14 @@ bool addDTC(ECU &ecu, const char* new_dtc) {
         }
         if (!exists) {
             strncpy(ecu.dtcs[ecu.num_dtcs], new_dtc, 5);
-            ecu.dtcs[ecu.num_dtcs][5] = '\0';
+            ecu.dtcs[ecu.num_dtcs][MAX_DTC_LENGTH - 1] = '\0';
             ecu.num_dtcs++;
             added_to_current = true;
         }
     }
 
     // Додаємо до постійних DTC, якщо є місце і код ще не існує
-    if (ecu.num_permanent_dtcs < 8) {
+    if (ecu.num_permanent_dtcs < MAX_DTCS_PER_ECU) {
         bool exists = false;
         for (int i = 0; i < ecu.num_permanent_dtcs; i++) {
             if (strcmp(ecu.permanent_dtcs[i], new_dtc) == 0) {
@@ -420,7 +420,7 @@ bool addDTC(ECU &ecu, const char* new_dtc) {
         }
         if (!exists) {
             strncpy(ecu.permanent_dtcs[ecu.num_permanent_dtcs], new_dtc, 5);
-            ecu.permanent_dtcs[ecu.num_permanent_dtcs][5] = '\0';
+            ecu.permanent_dtcs[ecu.num_permanent_dtcs][MAX_DTC_LENGTH - 1] = '\0';
             ecu.num_permanent_dtcs++;
             added_to_permanent = true;
         }
@@ -484,8 +484,8 @@ void completeDrivingCycle(ECU &ecu, bool use29bit) {
         
         if (ecu.error_free_cycles >= CYCLES_THRESHOLD) {
             if (ecu.num_permanent_dtcs > 0) {
-                ecu.num_permanent_dtcs = 0;
-                for(int i=0; i<8; i++) ecu.permanent_dtcs[i][0] = '\0';
+                ecu.num_permanent_dtcs = 0; // Clear all permanent DTCs
+                for(int i=0; i<MAX_DTCS_PER_ECU; i++) ecu.permanent_dtcs[i][0] = '\0';
                 Serial.println("  Threshold reached! Permanent DTCs cleared.");
             }
         }
@@ -689,10 +689,11 @@ void parseJsonConfig(String &json_buffer) {
         for(JsonVariant v : dtcs_array) {
             const char* dtc_str = v.as<const char*>();
             if (strlen(dtc_str) > 0) {
+                // Додаємо всі коди до основного блоку ECM для загальної видимості сканерами
+                addDTC(ecus[0], dtc_str);
                 char prefix = toupper(dtc_str[0]);
-                if (prefix == 'C') addDTC(ecus[2], dtc_str);
-                else if (prefix == 'B') addDTC(ecus[3], dtc_str);
-                else addDTC(ecus[0], dtc_str);
+                if (prefix == 'C') addDTC(ecus[2], dtc_str);      // Також дублюємо в ABS
+                else if (prefix == 'B') addDTC(ecus[3], dtc_str); // Також дублюємо в SRS
             }
         }
     }
@@ -787,7 +788,7 @@ void saveConfig() {
     // Save DTCs as a string
     String dtcString = "";
     for (int ecu_idx = 0; ecu_idx < NUM_ECUS; ecu_idx++) {
-        for (int i = 0; i < ecus[ecu_idx].num_dtcs; i++) {
+        for (int i = 0; i < ecus[ecu_idx].num_dtcs && i < MAX_DTCS_PER_ECU; i++) {
             const char* code = ecus[ecu_idx].dtcs[i];
             // Перевіряємо чи код вже є у рядку перед додаванням
             if (dtcString.indexOf(code) == -1) {
@@ -895,21 +896,18 @@ void loadConfig() {
     // Load and parse DTCs
     String dtcString = preferences.getString("dtcs", "");
     for(int i=0; i<4; i++) {
-        ecus[i].num_dtcs = 0; // Reset before loading
+        ecus[i].num_dtcs = 0; // Reset current DTCs before loading
+        ecus[i].num_permanent_dtcs = 0; // Reset permanent DTCs before loading
     }
     ecus[0].freezeFrameSet = false;
     if (dtcString.length() > 0) {
         int start = 0;
         while(start < dtcString.length()){
             int comma = dtcString.indexOf(',', start);
-            String token;
-            if(comma == -1) {
-                token = dtcString.substring(start);
-            } else {
-                token = dtcString.substring(start, comma);
-            }
+            String token = (comma == -1) ? dtcString.substring(start) : dtcString.substring(start, comma);
             token.trim();
             if(token.length() == 5){
+                // Додаємо всі коди до основного блоку ECM для загальної видимості сканерами
                 addDTC(ecus[0], token.c_str());
                 
                 char prefix = toupper(token[0]);

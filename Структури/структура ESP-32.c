@@ -8,7 +8,7 @@ typedef struct {
 // Таблиця стандартних OBD-II P0xxx
 #include <stdint.h>
 
-const DTC dtc_table[] = {
+const DTC dtc_table[] PROGMEM = {
 
 {"P0001","Fuel Volume Regulator Control Circuit/Open"},
 {"P0002","Fuel Volume Regulator Control Circuit Range/Performance"},

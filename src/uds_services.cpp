@@ -132,6 +132,27 @@ void handleReadDataByIdentifier(ECU &ecu, const uint8_t* data, uint16_t len, boo
         case 0x0203: // Vehicle Speed (example DID)
             response[response_len++] = ecu.vehicle_speed;
             break;
+        case 0xF18C: // ECU Manufacturing Date (Example)
+            // Format: YYYYMMDD (ASCII)
+            memcpy(&response[response_len], "20230115", 8);
+            response_len += 8;
+            break;
+        case 0xF194: // ECU Serial Number (Example)
+            memcpy(&response[response_len], "SN1234567890", 12);
+            response_len += 12;
+            break;
+        case 0xF195: // ECU Hardware Number (Example)
+            memcpy(&response[response_len], "HW-ABC-123", 10);
+            response_len += 10;
+            break;
+        case 0xF199: // Application Software Identification (Example)
+            memcpy(&response[response_len], "APP_V1.0.0", 10);
+            response_len += 10;
+            break;
+        case 0xF1A0: // Bootloader Software Identification (Example)
+            memcpy(&response[response_len], "BL_V1.0", 7);
+            response_len += 7;
+            break;
         default:
             sendUdsNegativeResponse(ecu, 0x22, NRC_REQUEST_OUT_OF_RANGE, use29bit);
             return;

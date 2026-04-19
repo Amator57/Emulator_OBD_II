@@ -507,9 +507,9 @@ void sendFreezeFrameData(ECU &ecu, byte pid, bool use29bit) {
 void sendDTCs(ECU &ecu, bool use29bit) {
     if (frame_delay_ms > 0) delay(frame_delay_ms);
 
-    byte dtc_bytes[16];
+    byte dtc_bytes[MAX_DTCS_PER_ECU * 2];
     int byte_count = 0;
-    for(int i=0; i<ecu.num_dtcs && i < 8; i++) {
+    for(int i=0; i<ecu.num_dtcs && i < MAX_DTCS_PER_ECU; i++) {
         // Використовуємо strtol з базою 16 для коректного парсингу HEX-частини коду DTC
         uint16_t code = strtol(&ecu.dtcs[i][1], NULL, 16);
         if (ecu.dtcs[i][0] == 'C') code |= 0x4000;
@@ -519,7 +519,7 @@ void sendDTCs(ECU &ecu, bool use29bit) {
         dtc_bytes[byte_count++] = lowByte(code);
     }
 
-    uint8_t data[20];
+    uint8_t data[MAX_DTCS_PER_ECU * 2 + 2];
     data[0] = 0x43;
     data[1] = ecu.num_dtcs; // Повертаємо лічильник DTC, бо сканер його очікує
     memcpy(&data[2], dtc_bytes, byte_count);
@@ -531,9 +531,9 @@ void sendPendingDTCs(ECU &ecu, bool use29bit) {
     if (frame_delay_ms > 0) delay(frame_delay_ms);
 
     // For simulation, we assume Pending DTCs are the same as Current DTCs
-    byte dtc_bytes[16];
+    byte dtc_bytes[MAX_DTCS_PER_ECU * 2];
     int byte_count = 0;
-    for(int i=0; i<ecu.num_dtcs && i < 8; i++) {
+    for(int i=0; i<ecu.num_dtcs && i < MAX_DTCS_PER_ECU; i++) {
         // Використовуємо strtol з базою 16 для коректного парсингу HEX-частини коду DTC
         uint16_t code = strtol(&ecu.dtcs[i][1], NULL, 16);
         if (ecu.dtcs[i][0] == 'C') code |= 0x4000;
@@ -543,7 +543,7 @@ void sendPendingDTCs(ECU &ecu, bool use29bit) {
         dtc_bytes[byte_count++] = lowByte(code);
     }
 
-    uint8_t data[20];
+    uint8_t data[MAX_DTCS_PER_ECU * 2 + 2];
     data[0] = 0x47;
     data[1] = ecu.num_dtcs; // Повертаємо лічильник DTC
     memcpy(&data[2], dtc_bytes, byte_count);
@@ -553,14 +553,14 @@ void sendPendingDTCs(ECU &ecu, bool use29bit) {
 
 void clearDTCs(ECU &ecu, bool use29bit, bool sendResponse) {
     ecu.num_dtcs = 0;
-    for(int i=0; i<8; i++) ecu.dtcs[i][0] = '\0';
+    for(int i=0; i<MAX_DTCS_PER_ECU; i++) ecu.dtcs[i][0] = '\0';
     ecu.freezeFrameSet = false;
     ecu.distance_with_mil = 0;
 
     // Також очищуємо постійні DTC (Mode 0A) та скидаємо лічильник циклів водіння,
     // щоб поведінка відповідала очікуванням.
     ecu.num_permanent_dtcs = 0;
-    for(int i=0; i<8; i++) ecu.permanent_dtcs[i][0] = '\0';
+    for(int i=0; i<MAX_DTCS_PER_ECU; i++) ecu.permanent_dtcs[i][0] = '\0';
     ecu.error_free_cycles = 0;
 
     if (sendResponse) {
@@ -650,9 +650,9 @@ void sendCvn(ECU &ecu, byte pid, bool use29bit) {
 void sendPermanentDTCs(ECU &ecu, bool use29bit) {
     if (frame_delay_ms > 0) delay(frame_delay_ms);
 
-    byte dtc_bytes[16];
+    byte dtc_bytes[MAX_DTCS_PER_ECU * 2];
     int byte_count = 0;
-    for(int i=0; i<ecu.num_permanent_dtcs && i < 8; i++) {
+    for(int i=0; i<ecu.num_permanent_dtcs && i < MAX_DTCS_PER_ECU; i++) {
         // Використовуємо strtol з базою 16 для коректного парсингу HEX-частини коду DTC
         uint16_t code = strtol(&ecu.permanent_dtcs[i][1], NULL, 16);
         if (ecu.permanent_dtcs[i][0] == 'C') code |= 0x4000;
@@ -662,7 +662,7 @@ void sendPermanentDTCs(ECU &ecu, bool use29bit) {
         dtc_bytes[byte_count++] = lowByte(code);
     }
 
-    uint8_t data[20];
+    uint8_t data[MAX_DTCS_PER_ECU * 2 + 2];
     data[0] = 0x4A;
     data[1] = ecu.num_permanent_dtcs; // Додаємо лічильник і сюди для узгодженості
     memcpy(&data[2], dtc_bytes, byte_count);

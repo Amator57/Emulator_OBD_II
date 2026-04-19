@@ -20,7 +20,11 @@ struct FreezeFrameData {
     int fuel_pressure;
 };
 
-#define MAX_MODE06_TESTS 5
+// Константи для професійної емуляції
+#define MAX_DTCS_PER_ECU 32
+#define MAX_DTC_LENGTH 6
+#define MAX_MODE06_TESTS 8
+
 struct Mode06Data {
     uint8_t testId;
     uint16_t value;
@@ -37,9 +41,9 @@ struct ECU {
     char vin[18];
     char cal_id[17];
     char cvn[9];
-    char dtcs[8][6];
+    char dtcs[MAX_DTCS_PER_ECU][MAX_DTC_LENGTH];
     int num_dtcs;
-    char permanent_dtcs[8][6];
+    char permanent_dtcs[MAX_DTCS_PER_ECU][MAX_DTC_LENGTH];
     int num_permanent_dtcs;
     
     // Parameters
