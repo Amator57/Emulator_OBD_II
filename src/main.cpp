@@ -120,10 +120,10 @@ void setup() {
   int boot_y = DISPLAY_TEXT_OFFSET_Y;
   tft.setCursor(DISPLAY_TEXT_OFFSET_X, boot_y);
   tft.println("OBD-II Emulator-A");
-  boot_y += 10;
+  boot_y += 15;
   tft.setCursor(DISPLAY_TEXT_OFFSET_X, boot_y);
   tft.println("Starting...");
-  boot_y += 10;
+  boot_y += 15;
 
   // --- Налаштування CAN ---
   // Ініціалізуємо CAN перед Wi-Fi, щоб емулятор міг відповідати сканеру, поки йде підключення до мережі
@@ -137,7 +137,7 @@ void setup() {
       Serial.printf("Connecting to WiFi: %s\n", wifi_ssid.c_str());
       tft.setCursor(DISPLAY_TEXT_OFFSET_X, boot_y);
       tft.println("Connecting WiFi...");
-      boot_y += 10;
+      boot_y += 15;
       WiFi.mode(WIFI_STA);
       WiFi.setSleep(false); // Вимикаємо режим сну Wi-Fi, щоб уникнути проблем з CAN
       WiFi.begin(wifi_ssid.c_str(), wifi_password.c_str());
@@ -166,11 +166,11 @@ void setup() {
           Serial.print("IP: "); Serial.println(WiFi.localIP());
           tft.setCursor(DISPLAY_TEXT_OFFSET_X, boot_y);
           tft.println("Mode: STA");
-          boot_y += 10;
+          boot_y += 15;
           tft.setCursor(DISPLAY_TEXT_OFFSET_X, boot_y);
           tft.print("IP: ");
           tft.println(WiFi.localIP());
-          boot_y += 10;
+          boot_y += 15;
       } else {
           Serial.println("\nConnection failed. Falling back to AP mode.");
       }
@@ -184,10 +184,13 @@ void setup() {
       Serial.print(" AP IP: "); Serial.println(ip);
       tft.setCursor(DISPLAY_TEXT_OFFSET_X, boot_y);
       tft.println("Mode: AP");
-      boot_y += 10;
+      boot_y += 15;
       tft.setCursor(DISPLAY_TEXT_OFFSET_X, boot_y);
       tft.print("AP IP: "); tft.println(ip);
-      boot_y += 10;
+      boot_y += 15;
+      tft.setCursor(DISPLAY_TEXT_OFFSET_X, boot_y);
+      tft.print("Pass: "); tft.println(ap_password);
+      boot_y += 15;
   }
 
   setupWebServer();
@@ -369,20 +372,24 @@ void updateDisplay() {
   auto printLine = [&](const char* text) {
     tft.setCursor(DISPLAY_TEXT_OFFSET_X, y);
     tft.println(text);
-    y += 8;
+    y += 15;
   };
 
   auto printLineFormat = [&](const char* prefix, const String &value) {
     tft.setCursor(DISPLAY_TEXT_OFFSET_X, y);
     tft.print(prefix);
     tft.println(value);
-    y += 8;
+    y += 15;
   };
 
   printLine("OBD-II Emulator-A");
   printLine("----------------");
   printLineFormat("Mode: ", WiFi.getMode() == WIFI_AP ? "AP" : "STA");
   printLineFormat("IP: ", WiFi.getMode() == WIFI_AP ? WiFi.softAPIP().toString() : WiFi.localIP().toString());
+  
+  if (WiFi.getMode() == WIFI_AP) {
+    printLineFormat("Pass: ", ap_password);
+  }
 }
 
 
@@ -689,11 +696,10 @@ void parseJsonConfig(String &json_buffer) {
         for(JsonVariant v : dtcs_array) {
             const char* dtc_str = v.as<const char*>();
             if (strlen(dtc_str) > 0) {
-                // Додаємо всі коди до основного блоку ECM для загальної видимості сканерами
-                addDTC(ecus[0], dtc_str);
                 char prefix = toupper(dtc_str[0]);
-                if (prefix == 'C') addDTC(ecus[2], dtc_str);      // Також дублюємо в ABS
-                else if (prefix == 'B') addDTC(ecus[3], dtc_str); // Також дублюємо в SRS
+                if (prefix == 'C') addDTC(ecus[2], dtc_str);      // Chassis -> ABS
+                else if (prefix == 'B') addDTC(ecus[3], dtc_str); // Body -> SRS
+                else addDTC(ecus[0], dtc_str);                    // P, U -> ECM
             }
         }
     }
@@ -907,12 +913,10 @@ void loadConfig() {
             String token = (comma == -1) ? dtcString.substring(start) : dtcString.substring(start, comma);
             token.trim();
             if(token.length() == 5){
-                // Додаємо всі коди до основного блоку ECM для загальної видимості сканерами
-                addDTC(ecus[0], token.c_str());
-                
                 char prefix = toupper(token[0]);
-                if (prefix == 'C') addDTC(ecus[2], token.c_str());
-                else if (prefix == 'B') addDTC(ecus[3], token.c_str());
+                if (prefix == 'C') addDTC(ecus[2], token.c_str());      // ABS
+                else if (prefix == 'B') addDTC(ecus[3], token.c_str()); // SRS
+                else addDTC(ecus[0], token.c_str());                    // ECM
             }
             if(comma == -1) break;
             start = comma + 1;

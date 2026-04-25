@@ -792,10 +792,11 @@ const char index_html[] PROGMEM = R"rawliteral(
             statusDiv.textContent = '';
 
             fetch(url)
-                .then(response => response.text())
+                .then(response => response.json())
                 .then(data => {
-                    statusDiv.textContent = data;
+                    statusDiv.textContent = 'General Settings Applied Successfully';
                     statusDiv.style.color = 'green';
+                    onMessage({data: JSON.stringify(data)}); // Оновлюємо UI новими даними
                 })
                 .catch(error => {
                     statusDiv.textContent = 'Error: Could not connect to the server.';
@@ -814,10 +815,11 @@ const char index_html[] PROGMEM = R"rawliteral(
             const bitrate = parts[1];
             select.disabled = true;
             fetch('/update?mode=' + mode + '&bitrate=' + bitrate)
-                .then(response => response.text())
+                .then(response => response.json())
                 .then(data => {
                     document.getElementById('status').textContent = 'CAN Mode Updated. Re-initializing...';
                     document.getElementById('status').style.color = 'blue';
+                    onMessage({data: JSON.stringify(data)});
                     setTimeout(() => { document.getElementById('status').textContent = ''; select.disabled = false; }, 2000);
                 })
                 .catch(err => { select.disabled = false; });

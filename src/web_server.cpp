@@ -303,12 +303,10 @@ void setupWebServer() {
             String token = (comma == -1) ? dtcs.substring(start) : dtcs.substring(start, comma);
             token.trim();
             if(token.length() > 0) {
-                // Додаємо всі коди до основного блоку ECM для загальної видимості сканерами
-                addDTC(ecus[0], token.c_str());
-                
                 char prefix = toupper(token[0]);
-                if (prefix == 'C') addDTC(ecus[2], token.c_str());      // Також дублюємо в ABS
-                else if (prefix == 'B') addDTC(ecus[3], token.c_str()); // Також дублюємо в SRS
+                if (prefix == 'C') addDTC(ecus[2], token.c_str());      // ABS
+                else if (prefix == 'B') addDTC(ecus[3], token.c_str()); // SRS
+                else addDTC(ecus[0], token.c_str());                    // ECM
             }
             if(comma == -1) break;
             start = comma + 1;

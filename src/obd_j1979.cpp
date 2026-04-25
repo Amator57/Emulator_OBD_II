@@ -16,7 +16,7 @@ void sendVIN(ECU &ecu, byte pid, bool use29bit);
 void sendCalId(ECU &ecu, byte pid, bool use29bit);
 void sendCvn(ECU &ecu, byte pid, bool use29bit);
 void sendPermanentDTCs(ECU &ecu, bool use29bit);
-void sendNegativeResponse(byte service, byte nrc, bool use29bit);
+void sendNegativeResponse(ECU &ecu, byte service, byte nrc, bool use29bit);
 void handleUDSRequest(ECU &ecu, uint32_t id, const uint8_t* data, uint16_t len);
 bool isotp_send(uint32_t id, const uint8_t* data, uint16_t len, bool extended);
 
@@ -79,6 +79,7 @@ void handleOBDRequest(uint32_t id, const uint8_t* data, uint16_t len) {
 
     for (int i = 0; i < NUM_ECUS; i++) {
         if (!ecus[i].enabled) continue;
+
         if (isBroadcast || targetEcuIndex == i || fault_multiple_responses) {
             switch(service) {
                 case 0x01: sendCurrentData(ecus[i], pid, is29Bit); break;
@@ -87,7 +88,7 @@ void handleOBDRequest(uint32_t id, const uint8_t* data, uint16_t len) {
                 case 0x04: clearDTCs(ecus[i], is29Bit, true); break; // Відповідаємо, бо це запит сканера
                 case 0x05: 
                     // Mode 05 is not supported in CAN OBD-II (replaced by Mode 06)
-                    sendNegativeResponse(service, 0x11, is29Bit); // Service Not Supported
+                    sendNegativeResponse(ecus[i], service, 0x11, is29Bit); // Service Not Supported
                     break;
                 case 0x06: sendMode06Data(ecus[i], pid, is29Bit); break;
                 case 0x07: sendPendingDTCs(ecus[i], is29Bit); break;
@@ -100,16 +101,16 @@ void handleOBDRequest(uint32_t id, const uint8_t* data, uint16_t len) {
                 case 0x0A: sendPermanentDTCs(ecus[i], is29Bit); break;
                 default:
                     // Optional: Send NRC for unknown service if addressed physically
-                    if (!isBroadcast) sendNegativeResponse(service, 0x11, is29Bit);
+                    if (!isBroadcast) sendNegativeResponse(ecus[i], service, 0x11, is29Bit);
                     break;
             }
         }
     }
 }
 
-void sendNegativeResponse(byte service, byte nrc, bool use29bit) {
+void sendNegativeResponse(ECU &ecu, byte service, byte nrc, bool use29bit) {
     uint8_t data[3] = {0x7F, service, nrc};
-    isotp_send(use29bit ? 0x18DAF110 : 0x7E8, data, 3, use29bit);
+    isotp_send(use29bit ? ecu.canId29 : ecu.canId, data, 3, use29bit);
 }
 
 void sendCurrentData(ECU &ecu, byte pid, bool use29bit) {
@@ -510,7 +511,6 @@ void sendDTCs(ECU &ecu, bool use29bit) {
     byte dtc_bytes[MAX_DTCS_PER_ECU * 2];
     int byte_count = 0;
     for(int i=0; i<ecu.num_dtcs && i < MAX_DTCS_PER_ECU; i++) {
-        // Використовуємо strtol з базою 16 для коректного парсингу HEX-частини коду DTC
         uint16_t code = strtol(&ecu.dtcs[i][1], NULL, 16);
         if (ecu.dtcs[i][0] == 'C') code |= 0x4000;
         else if (ecu.dtcs[i][0] == 'B') code |= 0x8000;
@@ -521,7 +521,7 @@ void sendDTCs(ECU &ecu, bool use29bit) {
 
     uint8_t data[MAX_DTCS_PER_ECU * 2 + 2];
     data[0] = 0x43;
-    data[1] = ecu.num_dtcs; // Повертаємо лічильник DTC, бо сканер його очікує
+    data[1] = ecu.num_dtcs; 
     memcpy(&data[2], dtc_bytes, byte_count);
     
     isotp_send(use29bit ? ecu.canId29 : ecu.canId, data, 2 + byte_count, use29bit);
@@ -530,11 +530,9 @@ void sendDTCs(ECU &ecu, bool use29bit) {
 void sendPendingDTCs(ECU &ecu, bool use29bit) {
     if (frame_delay_ms > 0) delay(frame_delay_ms);
 
-    // For simulation, we assume Pending DTCs are the same as Current DTCs
     byte dtc_bytes[MAX_DTCS_PER_ECU * 2];
     int byte_count = 0;
     for(int i=0; i<ecu.num_dtcs && i < MAX_DTCS_PER_ECU; i++) {
-        // Використовуємо strtol з базою 16 для коректного парсингу HEX-частини коду DTC
         uint16_t code = strtol(&ecu.dtcs[i][1], NULL, 16);
         if (ecu.dtcs[i][0] == 'C') code |= 0x4000;
         else if (ecu.dtcs[i][0] == 'B') code |= 0x8000;
@@ -545,7 +543,7 @@ void sendPendingDTCs(ECU &ecu, bool use29bit) {
 
     uint8_t data[MAX_DTCS_PER_ECU * 2 + 2];
     data[0] = 0x47;
-    data[1] = ecu.num_dtcs; // Повертаємо лічильник DTC
+    data[1] = ecu.num_dtcs;
     memcpy(&data[2], dtc_bytes, byte_count);
     
     isotp_send(use29bit ? ecu.canId29 : ecu.canId, data, 2 + byte_count, use29bit);
@@ -653,7 +651,6 @@ void sendPermanentDTCs(ECU &ecu, bool use29bit) {
     byte dtc_bytes[MAX_DTCS_PER_ECU * 2];
     int byte_count = 0;
     for(int i=0; i<ecu.num_permanent_dtcs && i < MAX_DTCS_PER_ECU; i++) {
-        // Використовуємо strtol з базою 16 для коректного парсингу HEX-частини коду DTC
         uint16_t code = strtol(&ecu.permanent_dtcs[i][1], NULL, 16);
         if (ecu.permanent_dtcs[i][0] == 'C') code |= 0x4000;
         else if (ecu.permanent_dtcs[i][0] == 'B') code |= 0x8000;
@@ -664,7 +661,7 @@ void sendPermanentDTCs(ECU &ecu, bool use29bit) {
 
     uint8_t data[MAX_DTCS_PER_ECU * 2 + 2];
     data[0] = 0x4A;
-    data[1] = ecu.num_permanent_dtcs; // Додаємо лічильник і сюди для узгодженості
+    data[1] = ecu.num_permanent_dtcs;
     memcpy(&data[2], dtc_bytes, byte_count);
     
     isotp_send(use29bit ? ecu.canId29 : ecu.canId, data, 2 + byte_count, use29bit);
