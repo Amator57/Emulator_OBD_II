@@ -8,7 +8,6 @@ extern AsyncWebServer server;
 extern AsyncWebSocket ws;
 extern bool dynamic_rpm_enabled, misfire_simulation_enabled, lean_mixture_simulation_enabled, fault_incorrect_sequence, fault_silent_mode, fault_multiple_responses, fault_stmin_overflow, fault_wrong_flow_control, fault_partial_vin;
 bool can_logging_enabled = false;
-extern int current_display_page;
 extern int frame_delay_ms;
 extern int error_injection_rate;
 extern bool simulation_running; // Оголошуємо зовнішню змінну для керування станом
@@ -29,7 +28,7 @@ bool initCAN(int bitrate);
 void saveConfig();
 void parseJsonConfig(String &json_buffer);
 String getJsonConfig();
-extern void saveWifi(String ssid, String pass);
+extern void saveWifi(String ssid, String pass, String ip, String gw, String sn);
 
 void logCAN(const twai_message_t& frame, bool rx) {
     if (!can_logging_enabled) return;
@@ -344,10 +343,6 @@ void setupWebServer() {
     if(request->hasParam("ecu3_en")) ecus[3].enabled = (request->getParam("ecu3_en")->value() == "true");
     if(request->hasParam("can_log")) can_logging_enabled = (request->getParam("can_log")->value() == "true");
     
-    if(request->hasParam("page")) {
-        current_display_page = request->getParam("page")->value().toInt();
-    }
-
     simulation_running = true; // Вмикаємо обмін зі сканером при натисканні Update Display
     // need_display_update = true; // Вимкнено, щоб фіксувати початковий екран
     
@@ -408,15 +403,18 @@ void setupWebServer() {
   });
 
   server.on("/save_wifi", HTTP_POST, [](AsyncWebServerRequest *request){
-      if(request->hasParam("ssid", true) && request->hasParam("pass", true)) {
+      if(request->hasParam("ssid", true)) {
           String ssid = request->getParam("ssid", true)->value();
           String pass = request->getParam("pass", true)->value();
-          saveWifi(ssid, pass);
+          String ip = request->getParam("ip", true)->value();
+          String gw = request->getParam("gw", true)->value();
+          String sn = request->getParam("sn", true)->value();
+          saveWifi(ssid, pass, ip, gw, sn);
           request->send(200, "text/plain", "WiFi Saved. Restarting...");
           delay(1000);
           ESP.restart();
       } else {
-          request->send(400, "text/plain", "Missing SSID or Password");
+          request->send(400, "text/plain", "Missing Configuration");
       }
   });
 

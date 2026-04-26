@@ -9,64 +9,33 @@ const char index_html[] PROGMEM = R"rawliteral(
     <title>OBD-II Emulator-A Control</title>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
-        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f4; }
-        h1 { color: #333; }
-        h2 { margin-top: 0; color: #333; border-bottom: 2px solid #eee; padding-bottom: 10px; margin-bottom: 20px;}
-        label { font-weight: bold; display: block; margin-top: 10px;}
-        input[type=text], input[type=number] { width: calc(100% - 22px); padding: 10px; margin-top: 5px; border: 1px solid #ccc; border-radius: 4px; }
-        input[type=submit] { background-color: #4CAF50; color: white; padding: 12px 20px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; margin-top: 20px;}
-        .formula { font-size: 0.8em; color: #666; display: block; margin-top: -2px; margin-bottom: 10px; font-weight: normal; }
-        nav { background-color: #333; overflow: hidden; border-radius: 8px 8px 0 0; }
-        .tab-button { background-color: inherit; float: left; border: none; outline: none; cursor: pointer; padding: 14px 16px; transition: 0.3s; font-size: 16px; color: white; }
-        .tab-button:hover { background-color: #555; }
-        .tab-button.active { background-color: #2196F3; }
-        .tab-button:disabled { background-color: #111; color: #888; cursor: not-allowed; }
-        .page-content { display: none; padding: 20px; background-color: #fff; border-radius: 0 0 8px 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); animation: fadeEffect 0.5s; }
-        @keyframes fadeEffect { from {opacity: 0;} to {opacity: 1;} }
-        button, input[type=submit] { padding: 12px 20px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; margin-top: 10px;}
-        button:disabled, input[type=submit]:disabled { background-color: #cccccc; cursor: not-allowed; }
-        input[type=submit]:hover { background-color: #45a049; }
-        .button-red { background-color: #f44336; color: white; }
-        .button-red:hover { background-color: #da190b; }
-        .button-blue { background-color: #2196F3; color: white; }
-        .button-blue:hover { background-color: #0b7dda; }
-        .live-status { margin-top: 20px; padding: 20px; background-color: #e9f7ef; border-radius: 8px; border: 1px solid #a7d7c5; }
-        .live-status h2 { margin-top: 0; color: #333; }
-        .live-status p { margin: 5px 0; }
-        .live-status span { font-weight: normal; color: #555; }
-        .container { max-width: 600px; margin: auto; }
-        /* Toggle Switch CSS */
-        .switch { position: relative; display: inline-block; width: 50px; height: 24px; vertical-align: middle; margin-right: 10px; }
-        .switch input { opacity: 0; width: 0; height: 0; }
-        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 34px; }
-        .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 4px; bottom: 4px; background-color: white; transition: .4s; border-radius: 50%; }
-        input:checked + .slider { background-color: #2196F3; }
-        input:focus + .slider { box-shadow: 0 0 1px #2196F3; }
-        input:checked + .slider:before { transform: translateX(26px); }
-        canvas { background-color: #fff; border: 1px solid #ccc; border-radius: 4px; width: 100%; height: 200px; margin-top: 10px; }
-        #can_log_area { width: 100%; height: 300px; font-family: monospace; font-size: 12px; border: 1px solid #ccc; overflow-y: scroll; background: #f9f9f9; padding: 5px; box-sizing: border-box; }
-        #dtc-input-container { display: flex; align-items: center; gap: 5px; margin-bottom: 15px; flex-wrap: nowrap; overflow-x: auto; }
-        .dtc-char { display: flex; flex-direction: column; align-items: center; }
-        .dtc-char span { font-size: 2em; font-family: monospace; border: 1px solid #ccc; padding: 5px 10px; border-radius: 4px; background: #fff; min-width: 25px; text-align: center;}
-        .dtc-char button { border: 1px solid #ccc; background: #f0f0f0; cursor: pointer; font-size: 1em; padding: 0 8px; margin: 2px 0; width: 100%; }
-        #dtc-list-ui { list-style: none; padding: 0; margin-top: 10px; }
-        #dtc-list-ui li { background: #eee; padding: 8px; margin-bottom: 5px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; font-family: monospace; }
-        #dtc-list-ui .remove-dtc { background: #f44336; color: white; border: none; border-radius: 50%; cursor: pointer; width: 24px; height: 24px; line-height: 24px; text-align: center; font-weight: bold; }
-        .flash-success {
-            animation: flash-green 1s ease-out;
-        }
-        @keyframes flash-green {
-            0% { background-color: #d4edda; }
-            100% { background-color: transparent; }
-        }
+        body { font-family: 'Inter', sans-serif; background-color: #fafafa; }
+        .page-content { display: none; }
+        .page-content.active { display: block; animation: fadeIn 0.2s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+        .tab-button.active { background-color: white; color: black; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .shadcn-card { background: white; border: 1px solid #e4e4e7; border-radius: 0.5rem; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+        .shadcn-input { border: 1px solid #e4e4e7; border-radius: 0.375rem; padding: 0.5rem 0.75rem; font-size: 0.875rem; transition: ring 0.2s; }
+        .shadcn-input:focus { outline: none; ring: 2px solid #000; ring-offset: 2px; }
+        .shadcn-btn { display: inline-flex; align-items: center; justify-content: center; border-radius: 0.375rem; font-weight: 500; padding: 0.5rem 1rem; transition: background 0.2s; }
+        .shadcn-btn-primary { background: #18181b; color: white; }
+        .shadcn-btn-primary:hover { background: #27272a; }
+        .shadcn-btn-outline { border: 1px solid #e4e4e7; background: white; }
+        .shadcn-btn-outline:hover { background: #f4f4f5; }
+        .switch-input:checked + .switch-slider { background-color: #18181b; }
     </style>
 </head>
-<body>
-    <div class="container">
-        <h1>OBD-II Emulator-A Control</h1>
+<body class="p-4 md:p-8">
+    <div class="max-w-4xl mx-auto">
+        <header class="mb-8">
+            <h1 class="text-3xl font-bold tracking-tight">OBD-II Emulator-A</h1>
+            <p class="text-muted-foreground text-gray-500">Advanced ECU Simulation Environment</p>
+        </header>
 
-        <nav>
+        <nav class="flex p-1 space-x-1 bg-gray-100 rounded-lg mb-6 overflow-x-auto">
             <button class="tab-button" onclick="showPage('page-general', this)">General & DTC</button>
             <button class="tab-button" onclick="showPage('page-pids01', this)">PIDs 01-1F</button>
             <button class="tab-button" onclick="showPage('page-pids20', this)">PIDs 20-3F</button>
@@ -86,13 +55,15 @@ const char index_html[] PROGMEM = R"rawliteral(
             <button class="tab-button" onclick="showPage('page-faults', this)">Fault Injection</button>
             <button class="tab-button" onclick="showPage('page-can', this)">CAN Monitor</button>
             <button class="tab-button" onclick="showPage('page-network', this)">Network</button>
+            <button class="tab-button px-3 py-1.5 text-sm font-medium rounded-md text-gray-600 hover:text-gray-900 transition-all" onclick="showPage('page-network', this)">Network</button>
         </nav>
 
         <form id="updateForm" action="/update" method="get">
-            <div id="page-general" class="page-content">
-                <h2>General Settings</h2>
-                <div style="margin-bottom: 15px; padding: 10px; background-color: #f3e5f5; border-radius: 8px; border: 1px solid #ce93d8;">
-                    <label for="can_mode_select" style="margin-top: 0;">CAN Protocol & Bitrate:</label>
+            <div id="page-general" class="page-content active shadcn-card p-6">
+                <h2 class="text-xl font-semibold mb-4">General Settings</h2>
+                <div class="space-y-4">
+                <div class="p-4 bg-purple-50 border border-purple-100 rounded-lg">
+                    <label for="can_mode_select" class="block text-sm font-medium mb-1">CAN Protocol & Bitrate:</label>
                     <select id="can_mode_select" onchange="updateCanMode(this)" style="width: 100%; padding: 8px; margin-top: 5px; border-radius: 4px;">
                         <option value="1_500000">ISO 15765-4 CAN (11-bit ID, 500 kbaud)</option>
                         <option value="2_500000">ISO 15765-4 CAN (29-bit ID, 500 kbaud)</option>

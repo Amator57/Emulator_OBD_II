@@ -1,6 +1,6 @@
 #pragma once
 #include <Arduino.h>
-#include <Adafruit_ST7735.h>
+//#include <Adafruit_ST7735.h>
 #include <driver/twai.h>
 
 // --- Enums ---
@@ -177,7 +177,7 @@ extern ECU ecus[];
 extern const int NUM_ECUS;
 extern EmulatorMode emulatorMode;
 extern int canBitrate;
-extern Adafruit_ST7735 tft;
+//extern Adafruit_ST7735 tft;
 extern IsoTpLink isoTpLink;
 extern bool fault_incorrect_sequence;
 extern bool fault_silent_mode;
@@ -190,7 +190,6 @@ extern volatile bool need_display_update; // Прапорець для синх�
 extern volatile bool config_locked;       // Прапорець блокування конфігурації
 
 // --- Common Functions ---
-void updateDisplay();
 void notifyClients();
 void clearDTCs(ECU &ecu, bool use29bit);
 

@@ -54,7 +54,6 @@ void handleUDSRequest(ECU &ecu, uint32_t id, const uint8_t* data, uint16_t len) 
     }
     // After handling a UDS command, update clients
     notifyClients();
-    updateDisplay();
 }
 
 void sendUdsNegativeResponse(ECU &ecu, uint8_t service, uint8_t nrc, bool use29bit) {

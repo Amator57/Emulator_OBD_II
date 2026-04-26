@@ -566,7 +566,6 @@ void clearDTCs(ECU &ecu, bool use29bit, bool sendResponse) {
         isotp_send(use29bit ? ecu.canId29 : ecu.canId, data, 1, use29bit);
     }
     
-    updateDisplay();
     notifyClients();
 }
 

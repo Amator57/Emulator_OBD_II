@@ -20,6 +20,9 @@ const char* ap_ssid = "OBD-II-Emulator-A";
 const char* ap_password = "123456789";
 String wifi_ssid = "";
 String wifi_password = "";
+String wifi_static_ip = "192.168.1.230";
+String wifi_static_gw = "192.168.1.1";
+String wifi_static_sn = "255.255.255.0";
 AsyncWebServer server(80);
 AsyncWebSocket ws("/ws");
 
@@ -64,7 +67,7 @@ void isotp_init();
 void isotp_on_frame(const twai_message_t& frame);
 void isotp_poll();
 bool isotp_get_message(uint32_t* id, uint8_t* data, uint16_t* len);
-void saveWifi(String ssid, String pass);
+void saveWifi(String ssid, String pass, String ip, String gw, String sn);
 extern String getJsonState(); // Оголошуємо зовнішню функцію для генерації JSON
 
 void setup() {
@@ -88,6 +91,13 @@ void setup() {
       Serial.printf("Connecting to WiFi: %s\n", wifi_ssid.c_str());
       WiFi.mode(WIFI_STA);
       WiFi.setSleep(false); // Вимикаємо режим сну Wi-Fi, щоб уникнути проблем з CAN
+
+      IPAddress local_IP, gateway, subnet;
+      if (local_IP.fromString(wifi_static_ip) && gateway.fromString(wifi_static_gw) && subnet.fromString(wifi_static_sn)) {
+          if (!WiFi.config(local_IP, gateway, subnet)) {
+              Serial.println("STA Failed to configure Static IP");
+          }
+      }
       WiFi.begin(wifi_ssid.c_str(), wifi_password.c_str());
       
       unsigned long connect_start = millis();
@@ -459,6 +469,9 @@ String getJsonConfig() {
     doc["misfire_simulation_enabled"] = misfire_simulation_enabled;
     doc["lean_mixture_simulation_enabled"] = lean_mixture_simulation_enabled;
 
+    doc["static_ip"] = wifi_static_ip;
+    doc["static_gw"] = wifi_static_gw;
+    doc["static_sn"] = wifi_static_sn;
     doc["mode"] = (int)emulatorMode;
     doc["bitrate"] = canBitrate;
     doc["frame_delay"] = frame_delay_ms;
@@ -563,6 +576,10 @@ void parseJsonConfig(String &json_buffer) {
     misfire_simulation_enabled = doc["misfire_simulation_enabled"] | false;
     lean_mixture_simulation_enabled = doc["lean_mixture_simulation_enabled"] | false;
 
+    wifi_static_ip = doc["static_ip"] | "192.168.1.230";
+    wifi_static_gw = doc["static_gw"] | "192.168.1.1";
+    wifi_static_sn = doc["static_sn"] | "255.255.255.0";
+
     emulatorMode = (EmulatorMode)(doc["mode"] | (int)MODE_OBD_11BIT);
     canBitrate = doc["bitrate"] | 500000;
     frame_delay_ms = doc["frame_delay"] | 0;
@@ -599,13 +616,16 @@ void parseJsonConfig(String &json_buffer) {
     notifyClients();
 }
 
-void saveWifi(String ssid, String pass) {
+void saveWifi(String ssid, String pass, String ip, String gw, String sn) {
     preferences.begin("obd-config", false);
     preferences.putString("wifi_ssid", ssid);
     preferences.putString("wifi_pass", pass);
+    preferences.putString("static_ip", ip);
+    preferences.putString("static_gw", gw);
+    preferences.putString("static_sn", sn);
     preferences.putBool("configSaved", true); // Також встановлюємо прапорець, що конфігурація існує
     preferences.end();
-    Serial.println("WiFi settings saved to NVS.");
+    Serial.println("WiFi & Static IP settings saved to NVS.");
 }
 
 void saveConfig() {
@@ -620,6 +640,9 @@ void saveConfig() {
     preferences.putInt("bitrate", canBitrate);
     preferences.putInt("fDelay", frame_delay_ms);
     preferences.putInt("errRate", error_injection_rate);
+    preferences.putString("static_ip", wifi_static_ip);
+    preferences.putString("static_gw", wifi_static_gw);
+    preferences.putString("static_sn", wifi_static_sn);
 
     // --- ECM Data (ecus[0]) ---
     preferences.putString("vin", ecus[0].vin);
@@ -710,6 +733,9 @@ void loadConfig() {
     // Завантажуємо налаштування Wi-Fi в першу чергу, незалежно від іншого конфігу.
     wifi_ssid = preferences.getString("wifi_ssid", "");
     wifi_password = preferences.getString("wifi_pass", "");
+    wifi_static_ip = preferences.getString("static_ip", "192.168.1.230");
+    wifi_static_gw = preferences.getString("static_gw", "192.168.1.1");
+    wifi_static_sn = preferences.getString("static_sn", "255.255.255.0");
 
     if (!preferences.getBool("configSaved", false)) {
         Serial.println("No full configuration found in NVS. Using defaults for other settings.");
