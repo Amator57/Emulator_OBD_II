@@ -9,28 +9,6 @@
 #include "shared.h"
 // #include "web_page.h" // Moved to web_server.cpp
 
-// --- TFT Display ---
-#include <Adafruit_GFX.h>
-#include <Adafruit_ST7735.h>
-#include <SPI.h>
-
-// ############## Налаштування пінів TFT ST7735 ##############
-// Якщо у вас інші піни, змініть їх тут
-//#define TFT_CS     5
-//#define TFT_DC     2
-//#define TFT_RST    4
-// Для апаратної реалізації SPI, піни MOSI та SCLK зазвичай визначені платою
-// Для ESP32 це GPIO 23 (MOSI) та GPIO 18 (SCLK)
-// #define TFT_SCLK 18
-// #define TFT_MOSI 23
-#define TFT_MOSI  11
-#define TFT_SCLK  12
-#define TFT_CS     10
-#define TFT_DC      9
-#define TFT_RST     8
-
-Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_RST);
-
 const int CYCLES_THRESHOLD = 3;
 
 // --- Emulator Modes ---
@@ -59,7 +37,6 @@ bool fault_stmin_overflow = false;
 bool fault_wrong_flow_control = false;
 bool fault_partial_vin = false;
 bool simulation_running = true; // Прапорець для контролю початку обміну (true за замовчуванням)
-volatile bool need_display_update = false; // Ініціалізація прапорця
 volatile bool need_can_reinit = false;     // Прапорець для безпечного перезапуску CAN
 volatile bool need_websocket_update = false; // Прапорець для оновлення клієнтів
 volatile bool need_clear_dtcs = false;       // Прапорець для очищення помилок
@@ -68,8 +45,6 @@ volatile bool need_load_config = false;      // Прапорець для зав
 volatile bool need_save_config = false;      // Прапорець для збереження конфігу
 String pending_config_json;                  // Буфер для JSON конфігурації
 SemaphoreHandle_t configMutex = NULL;      // М'ютекс для захисту даних
-
-int current_display_page = 0; // 0=General, 1=PIDs, 2=Mode06, 3=TCM, 4=Faults
 
 // --- Function Prototypes (from other modules) ---
 bool initCAN(int bitrate);
@@ -92,12 +67,6 @@ bool isotp_get_message(uint32_t* id, uint8_t* data, uint16_t* len);
 void saveWifi(String ssid, String pass);
 extern String getJsonState(); // Оголошуємо зовнішню функцію для генерації JSON
 
-
-
-// Глобальний зсув тексту на дисплеї
-const int DISPLAY_TEXT_OFFSET_X = 20; // на 10 пікселів вправо
-const int DISPLAY_TEXT_OFFSET_Y = 30; // на 10 пікселів вниз
-
 void setup() {
   Serial.begin(115200);
   Serial.println("OBD-II Emulator-A Starting...");
@@ -106,24 +75,6 @@ void setup() {
   setupEcus();
   
   loadConfig(); // Завантажуємо збережену конфігурацію при старті
-
-  // Явна ініціалізація SPI, щоб гарантувати використання вибраних пінів (SCLK, MISO, MOSI, SS)
-  SPI.begin(TFT_SCLK, -1, TFT_MOSI, TFT_CS);
-
-  // --- Ініціалізація TFT ---
-  tft.initR(INITR_BLACKTAB); // або INITR_GREENTAB, INITR_REDTAB
-  tft.fillScreen(ST7735_BLACK);
-  tft.setRotation(1); // Горизонтальна орієнтація
-  tft.setTextColor(ST7735_WHITE);
-  tft.setTextSize(1);
-  
-  int boot_y = DISPLAY_TEXT_OFFSET_Y;
-  tft.setCursor(DISPLAY_TEXT_OFFSET_X, boot_y);
-  tft.println("OBD-II Emulator-A");
-  boot_y += 15;
-  tft.setCursor(DISPLAY_TEXT_OFFSET_X, boot_y);
-  tft.println("Starting...");
-  boot_y += 15;
 
   // --- Налаштування CAN ---
   // Ініціалізуємо CAN перед Wi-Fi, щоб емулятор міг відповідати сканеру, поки йде підключення до мережі
@@ -135,9 +86,6 @@ void setup() {
   bool connected = false;
   if (wifi_ssid.length() > 0) {
       Serial.printf("Connecting to WiFi: %s\n", wifi_ssid.c_str());
-      tft.setCursor(DISPLAY_TEXT_OFFSET_X, boot_y);
-      tft.println("Connecting WiFi...");
-      boot_y += 15;
       WiFi.mode(WIFI_STA);
       WiFi.setSleep(false); // Вимикаємо режим сну Wi-Fi, щоб уникнути проблем з CAN
       WiFi.begin(wifi_ssid.c_str(), wifi_password.c_str());
@@ -164,13 +112,6 @@ void setup() {
           connected = true;
           Serial.println("\nWiFi Connected!");
           Serial.print("IP: "); Serial.println(WiFi.localIP());
-          tft.setCursor(DISPLAY_TEXT_OFFSET_X, boot_y);
-          tft.println("Mode: STA");
-          boot_y += 15;
-          tft.setCursor(DISPLAY_TEXT_OFFSET_X, boot_y);
-          tft.print("IP: ");
-          tft.println(WiFi.localIP());
-          boot_y += 15;
       } else {
           Serial.println("\nConnection failed. Falling back to AP mode.");
       }
@@ -182,22 +123,9 @@ void setup() {
       WiFi.softAP(ap_ssid, ap_password);
       IPAddress ip = WiFi.softAPIP();
       Serial.print(" AP IP: "); Serial.println(ip);
-      tft.setCursor(DISPLAY_TEXT_OFFSET_X, boot_y);
-      tft.println("Mode: AP");
-      boot_y += 15;
-      tft.setCursor(DISPLAY_TEXT_OFFSET_X, boot_y);
-      tft.print("AP IP: "); tft.println(ip);
-      boot_y += 15;
-      tft.setCursor(DISPLAY_TEXT_OFFSET_X, boot_y);
-      tft.print("Pass: "); tft.println(ap_password);
-      boot_y += 15;
   }
 
   setupWebServer();
-
-  // Показуємо початкову сторінку з офсетом
-  need_display_update = true;
-  updateDisplay();
 
   Serial.println("Web server started.");
   delay(1000); // Зменшено затримку, щоб прискорити старт
@@ -226,7 +154,6 @@ void loop() {
               canBitrate = (detect_stage == 0) ? 500000 : 250000;
               initCAN(canBitrate);
               Serial.printf("Auto-detect: Switching to %d bps\n", canBitrate);
-              // updateDisplay();
               last_switch = millis();
           }
       }
@@ -288,12 +215,6 @@ void loop() {
           jsonToSend = getJsonState(); 
           need_websocket_update = false;
           last_ws_update = millis();
-      }
-
-      // Безпечне оновлення дисплея з основного потоку
-      if (need_display_update && isoTpLink.txState == ISOTP_IDLE && isoTpLink.rxState == ISOTP_IDLE) {
-          updateDisplay();
-          need_display_update = false;
       }
 
       // --- Simulation Logic (affects ECM - ecus[0]) ---
@@ -362,37 +283,6 @@ void loop() {
   ws.cleanupClients();
   }
 }
-
-void updateDisplay() {
-  tft.fillScreen(ST7735_BLACK);
-  tft.setTextColor(ST7735_WHITE);
-  tft.setTextSize(1);
-
-  int y = DISPLAY_TEXT_OFFSET_Y;
-  auto printLine = [&](const char* text) {
-    tft.setCursor(DISPLAY_TEXT_OFFSET_X, y);
-    tft.println(text);
-    y += 15;
-  };
-
-  auto printLineFormat = [&](const char* prefix, const String &value) {
-    tft.setCursor(DISPLAY_TEXT_OFFSET_X, y);
-    tft.print(prefix);
-    tft.println(value);
-    y += 15;
-  };
-
-  printLine("OBD-II Emulator-A");
-  printLine("----------------");
-  printLineFormat("Mode: ", WiFi.getMode() == WIFI_AP ? "AP" : "STA");
-  printLineFormat("IP: ", WiFi.getMode() == WIFI_AP ? WiFi.softAPIP().toString() : WiFi.localIP().toString());
-  
-  if (WiFi.getMode() == WIFI_AP) {
-    printLineFormat("Pass: ", ap_password);
-  }
-}
-
-
 
 // Допоміжна функція для додавання DTC, якщо він ще не існує
 bool addDTC(ECU &ecu, const char* new_dtc) {
